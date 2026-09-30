@@ -54,6 +54,8 @@ export class TelegramBotService {
         `📅 /set\\_months - Change how many months forward to monitor (1-6)`,
         `📊 /status - Check current monitor status`,
         `👤 /profile - View your saved applicant info`,
+        `❌ /cancel - Cancel any ongoing wizard or form`,
+        `🗑️ /delete\\_profile - Permanently delete your data from the bot`,
         `⏸️ /stop\\_monitor - Pause automatic notifications`,
         `▶️ /start\\_monitor - Resume automatic notifications`,
         `❓ /help - Help and usage guide`,
@@ -75,11 +77,12 @@ export class TelegramBotService {
       const helpText = [
         `📖 *Capago Slot Monitor Guide*`,
         ``,
-        `1️⃣ *Configure Application*: Use /new\\_application so the bot fills the portal with your exact details (Name, Passport, Travel Date, France-Visas Choice, Horizon).`,
+        `1️⃣ *Configure Application*: Use /new\\_application to enter your details step-by-step.`,
         `2️⃣ *Custom Horizon*: Choose how many months ahead to scan (1 to 6 months) via /set\\_months.`,
         `3️⃣ *Automatic Monitoring*: Runs in the background every ${env.MIN_CHECK_INTERVAL_MINUTES}-${env.MAX_CHECK_INTERVAL_MINUTES} mins.`,
-        `4️⃣ *Instant Alert*: The second slots open, you get a notification with the calendar screenshot and exact times.`,
-        `5️⃣ *Confirming*: Tap your preferred slot button, open the portal link, solve the security CAPTCHA, and secure your appointment!`,
+        `4️⃣ *Cancel at Any Time*: Send /cancel to immediately abort an ongoing form or wizard.`,
+        `5️⃣ *Delete Your Data*: Send /delete\\_profile to permanently wipe your passport and personal data from the bot.`,
+        `6️⃣ *Instant Alert*: When slots open, you get a notification with the screenshot and exact times.`,
       ].join('\n');
       await ctx.reply(helpText, { parse_mode: 'Markdown' });
     });
@@ -97,6 +100,46 @@ export class TelegramBotService {
     // --- /set_months command ---
     this.bot.command('set_months', async (ctx) => {
       await this.replySetMonths(ctx);
+    });
+
+    // --- /cancel command ---
+    this.bot.command('cancel', async (ctx) => {
+      const chatId = ctx.chat.id;
+      const session = botStorage.getSession(chatId);
+      const hadActiveStep = Boolean(session.step || session.profileDraft);
+      session.step = undefined;
+      session.profileDraft = undefined;
+      botStorage.updateSession(chatId, session);
+
+      if (hadActiveStep) {
+        await ctx.reply(`❌ *Form cancelled.* Your in-progress application draft has been discarded.`, {
+          parse_mode: 'Markdown',
+        });
+      } else {
+        await ctx.reply(`ℹ️ There is no active operation to cancel. You can use /new\\_application or /check\\_now.`, {
+          parse_mode: 'Markdown',
+        });
+      }
+    });
+
+    // --- /delete_profile command ---
+    this.bot.command('delete_profile', async (ctx) => {
+      const chatId = ctx.chat.id;
+      const session = botStorage.getSession(chatId);
+
+      if (!session.savedProfile) {
+        await ctx.reply(`ℹ️ You don't have any saved application profile to delete.`, { parse_mode: 'Markdown' });
+        return;
+      }
+
+      const kb = new InlineKeyboard()
+        .text('⚠️ Yes, Delete All My Data', 'confirm_delete_profile')
+        .text('❌ Cancel', 'cmd_profile');
+
+      await ctx.reply(
+        `⚠️ *Delete Profile & Wipe Data?*\n\nAre you sure you want to delete your profile?\n\n• Name: *${session.savedProfile.firstName} ${session.savedProfile.lastName}*\n• Passport: \`${session.savedProfile.passportNumber}\`\n\nAll personal data will be *permanently erased* from the server, and automatic slot monitoring will stop immediately.`,
+        { parse_mode: 'Markdown', reply_markup: kb }
+      );
     });
 
     // --- /start_monitor command ---
@@ -126,9 +169,11 @@ export class TelegramBotService {
       const keyboard = new InlineKeyboard()
         .text('👨 Mr', 'title_mr')
         .text('👩 Mrs', 'title_mrs')
-        .text('👧 Miss', 'title_miss');
+        .text('👧 Miss', 'title_miss')
+        .row()
+        .text('❌ Cancel', 'cancel_wizard');
 
-      await ctx.reply(`📝 *New Application Profile Setup (1/10)*\n\nPlease select your title:`, {
+      await ctx.reply(`📝 *New Application Profile Setup (1/10)*\n\nPlease select your title:\n_(Type /cancel at any time to abort)_`, {
         parse_mode: 'Markdown',
         reply_markup: keyboard,
       });
@@ -177,6 +222,70 @@ export class TelegramBotService {
 
       if (data === 'cmd_set_months') {
         await this.replySetMonths(ctx);
+        return;
+      }
+
+      if (data === 'cmd_stop') {
+        botStorage.updateSession(chatId, { monitoringActive: false });
+        await ctx.reply(`⏸️ *Monitoring PAUSED.* Use /start\\_monitor or the Resume button to reactivate.`, {
+          parse_mode: 'Markdown',
+        });
+        return;
+      }
+
+      if (data === 'cmd_start') {
+        const session = botStorage.getSession(chatId);
+        if (!session.savedProfile) {
+          await ctx.reply(
+            `⚠️ *No profile configured.* Use /new\\_application first to enter your real application details.`,
+            { parse_mode: 'Markdown' }
+          );
+          return;
+        }
+        botStorage.updateSession(chatId, { monitoringActive: true });
+        await ctx.reply(`✅ *Monitoring RESUMED.* You will receive instant alerts when slots open.`, {
+          parse_mode: 'Markdown',
+        });
+        return;
+      }
+
+      if (data === 'cancel_wizard') {
+        const session = botStorage.getSession(chatId);
+        session.step = undefined;
+        session.profileDraft = undefined;
+        botStorage.updateSession(chatId, session);
+        await ctx.reply(`❌ *Application setup cancelled.* Your in-progress draft was discarded.`, { parse_mode: 'Markdown' });
+        return;
+      }
+
+      if (data === 'cmd_delete_profile') {
+        const session = botStorage.getSession(chatId);
+        if (!session.savedProfile) {
+          await ctx.reply(`ℹ️ You don't have any saved application profile to delete.`, { parse_mode: 'Markdown' });
+          return;
+        }
+        const kb = new InlineKeyboard()
+          .text('⚠️ Yes, Delete All My Data', 'confirm_delete_profile')
+          .text('❌ Cancel', 'cmd_profile');
+        await ctx.reply(
+          `⚠️ *Delete Profile & Wipe Data?*\n\nAre you sure you want to delete your profile?\n\n• Name: *${session.savedProfile.firstName} ${session.savedProfile.lastName}*\n• Passport: \`${session.savedProfile.passportNumber}\`\n\nAll personal data will be *permanently erased* from the server, and automatic slot monitoring will stop immediately.`,
+          { parse_mode: 'Markdown', reply_markup: kb }
+        );
+        return;
+      }
+
+      if (data === 'confirm_delete_profile') {
+        const session = botStorage.getSession(chatId);
+        session.savedProfile = undefined;
+        session.profileDraft = undefined;
+        session.step = undefined;
+        session.monitoringActive = false;
+        botStorage.updateSession(chatId, session);
+
+        await ctx.reply(
+          `🗑️ *Profile Deleted Successfully.*\n\nAll your personal details have been permanently erased from the server. Background monitoring is now stopped.\n\nUse /new\\_application if you wish to set up a new profile in the future.`,
+          { parse_mode: 'Markdown' }
+        );
         return;
       }
 
@@ -405,6 +514,25 @@ export class TelegramBotService {
       const text = ctx.message.text.trim();
 
       if (!session.step) return;
+
+      // Handle cancel requests
+      if (text.toLowerCase() === '/cancel' || text.toLowerCase() === 'cancel' || text.toLowerCase() === '/abort') {
+        session.step = undefined;
+        session.profileDraft = undefined;
+        botStorage.updateSession(chatId, session);
+        await ctx.reply(`❌ *Form cancelled.* Your application draft was discarded. Send /new\\_application when ready to start again.`, {
+          parse_mode: 'Markdown',
+        });
+        return;
+      }
+
+      // If user typed any other slash command, exit form mode immediately
+      if (text.startsWith('/')) {
+        session.step = undefined;
+        session.profileDraft = undefined;
+        botStorage.updateSession(chatId, session);
+        return;
+      }
 
       switch (session.step) {
         case 'AWAITING_FIRSTNAME':
