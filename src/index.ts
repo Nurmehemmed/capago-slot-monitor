@@ -129,7 +129,10 @@ class CapagoMonitor {
       // 1. Session verification & authentication
       const authResult = await this.sessionManager.ensureAuthenticated(page, context);
       if (!authResult.authenticated) {
-        telegramBotService.logActivity(`❌ Giriş xətası — Capago məlumatlarını yoxlayın`);
+        const isAborted = Boolean(authResult.error?.includes('closed') || !this.activeBrowser);
+        if (!isAborted) {
+          telegramBotService.logActivity(`❌ Giriş xətası — Capago məlumatlarını yoxlayın`);
+        }
         return { report: null };
       }
       telegramBotService.logActivity(`✅ Capago portalına giriş uğurludur`);

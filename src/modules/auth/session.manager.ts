@@ -209,8 +209,13 @@ export class SessionManager {
       // Default: session is ready
       return { authenticated: true, reusedSession: true };
     } catch (err) {
-      console.error(`[Auth] Error accessing portal:`, err instanceof Error ? err.message : err);
-      return { authenticated: false, reusedSession: false, error: String(err) };
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('closed') || msg.includes('Target page') || msg.includes('Browser has been closed')) {
+        console.log(`[Auth] Portal navigation cancelled (browser closed per user request).`);
+      } else {
+        console.error(`[Auth] Error accessing portal:`, msg);
+      }
+      return { authenticated: false, reusedSession: false, error: msg };
     }
   }
 }
