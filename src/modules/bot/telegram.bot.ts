@@ -15,6 +15,8 @@ export type CheckHandler = (
   profile?: ApplicantProfile
 ) => Promise<CheckResult | ScrapeRunReport | null>;
 
+export type AbortHandler = () => Promise<boolean>;
+
 export function getCategoryDisplay(cat?: string): string {
   if (cat === 'Business') return 'Biznes';
   if (cat === 'Study') return 'Təhsil';
@@ -32,6 +34,7 @@ export class TelegramBotService {
   private isRunning = false;
   private checkInProgress = false;
   private onTriggerCheck?: CheckHandler;
+  private onAbortCheck?: AbortHandler;
 
   // Ring buffer: last 20 activity log entries
   private activityLog: { ts: string; msg: string }[] = [];
@@ -49,6 +52,24 @@ export class TelegramBotService {
 
   public setBusy(busy: boolean): void {
     this.checkInProgress = busy;
+  }
+
+  public setAbortHandler(handler: AbortHandler): void {
+    this.onAbortCheck = handler;
+  }
+
+  public async abortRunningCheck(): Promise<boolean> {
+    if (this.onAbortCheck) {
+      try {
+        const res = await this.onAbortCheck();
+        this.checkInProgress = false;
+        return res;
+      } catch (err) {
+        console.error(`[Bot] Error aborting running check:`, err);
+      }
+    }
+    this.checkInProgress = false;
+    return false;
   }
 
   constructor() {
@@ -97,7 +118,8 @@ export class TelegramBotService {
         `📅 /set\\_months - Baxılacaq ayların sayını seçmək (1-6)`,
         `📊 /status - Monitorinqin cari vəziyyəti`,
         `👤 /profile - Yadda saxlanmış müraciət məlumatları`,
-        `❌ /cancel - Cari formu və ya əməliyyatı ləğv etmək`,
+        `🛑 /stop\_all - Bütün aktiv prosesləri dərhal dayandırmaq`,
+        `⚙️ /cancel - Prosesləri idarə etmək və ləğv paneli`,
         `🗑️ /delete\\_profile - Məlumatlarınızı botdan birdəfəlik silmək`,
         `⏸️ /stop\\_monitor - Avtomatik bildirişləri dayandırmaq`,
         `▶️ /start\\_monitor - Avtomatik bildirişləri davam etdirmək`,
@@ -110,7 +132,9 @@ export class TelegramBotService {
         .row()
         .text('📅 Baxış Müddəti', 'cmd_set_months')
         .text('📊 Status', 'cmd_status')
-        .text('👤 Profilim', 'cmd_profile');
+        .row()
+        .text('👤 Profilim', 'cmd_profile')
+        .text('⚙️ Prosesləri İdarə Et', 'cmd_cancel_menu');
 
       await ctx.reply(welcomeText, { parse_mode: 'Markdown', reply_markup: keyboard });
     });
@@ -169,22 +193,12 @@ export class TelegramBotService {
 
     // --- /cancel command ---
     this.bot.command('cancel', async (ctx) => {
-      const chatId = ctx.chat.id;
-      const session = botStorage.getSession(chatId);
-      const hadActiveStep = Boolean(session.step || session.profileDraft);
-      session.step = undefined;
-      session.profileDraft = undefined;
-      botStorage.updateSession(chatId, session);
+      await this.replyCancelPanel(ctx);
+    });
 
-      if (hadActiveStep) {
-        await ctx.reply(`❌ *Form ləğv edildi.* Doldurulmaqda olan qaralama məlumatlar silindi.`, {
-          parse_mode: 'Markdown',
-        });
-      } else {
-        await ctx.reply(`ℹ️ Hal-hazırda ləğv ediləcək aktiv əməliyyat yoxdur. /new\\_application və ya /check\\_now istifadə edə bilərsiniz.`, {
-          parse_mode: 'Markdown',
-        });
-      }
+    // --- /stop_all & /cancel_all command ---
+    this.bot.command(['stop_all', 'cancel_all'], async (ctx) => {
+      await this.handleStopAll(ctx);
     });
 
     // --- /delete_profile command ---
@@ -325,6 +339,32 @@ export class TelegramBotService {
         return;
       }
 
+      if (data === 'cmd_cancel_menu') {
+        await this.replyCancelPanel(ctx);
+        return;
+      }
+
+      if (data === 'cmd_abort_check') {
+        const stopped = await this.abortRunningCheck();
+        this.checkInProgress = false;
+        if (stopped) {
+          await ctx.reply(`🛑 *Cari brauzer yoxlaması dərhal dayandırıldı.* Proses bağlandı və resurslar azad edildi.`, {
+            parse_mode: 'Markdown',
+          });
+        } else {
+          await ctx.reply(`ℹ️ Hal-hazırda icra olunan aktiv brauzer prosesi yoxdur və ya artıq tamamlanıb.`, {
+            parse_mode: 'Markdown',
+          });
+        }
+        await this.replyCancelPanel(ctx);
+        return;
+      }
+
+      if (data === 'cmd_stop_all') {
+        await this.handleStopAll(ctx);
+        return;
+      }
+
       if (data === 'cmd_delete_profile') {
         const session = botStorage.getSession(chatId);
         if (!session.savedProfile) {
@@ -342,6 +382,8 @@ export class TelegramBotService {
       }
 
       if (data === 'confirm_delete_profile') {
+        await this.abortRunningCheck();
+        this.checkInProgress = false;
         const session = botStorage.getSession(chatId);
         session.savedProfile = undefined;
         session.profileDraft = undefined;
@@ -350,7 +392,7 @@ export class TelegramBotService {
         botStorage.updateSession(chatId, session);
 
         await ctx.reply(
-          `🗑️ *Profil Uğurla Silindi.*\n\nBütün şəxsi məlumatlarınız serverdən birdəfəlik silindi. Arxa plan monitorinqi dayandırıldı.\n\nGələcəkdə yeni profil quraşdırmaq üçün /new\\_application istifadə edə bilərsiniz.`,
+          `🗑️ *Bütün Proseslər Dayandırıldı və Məlumatlar Silindi.*\n\nBütün şəxsi məlumatlarınız serverdən birdəfəlik silindi və arxa plan monitorinqi dayandırıldı.\n\nGələcəkdə yeni profil quraşdırmaq üçün /new\\_application istifadə edə bilərsiniz.`,
           { parse_mode: 'Markdown' }
         );
         return;
@@ -591,12 +633,12 @@ export class TelegramBotService {
 
       // Handle cancel requests
       if (text.toLowerCase() === '/cancel' || text.toLowerCase() === 'cancel' || text.toLowerCase() === '/abort') {
-        session.step = undefined;
-        session.profileDraft = undefined;
-        botStorage.updateSession(chatId, session);
-        await ctx.reply(`❌ *Form ləğv edildi.* Qaralama məlumatlar silindi. Hazır olduqda /new\\_application göndərə bilərsiniz.`, {
-          parse_mode: 'Markdown',
-        });
+        await this.replyCancelPanel(ctx);
+        return;
+      }
+
+      if (text.toLowerCase() === '/stop_all' || text.toLowerCase() === '/cancel_all' || text.toLowerCase() === 'stop') {
+        await this.handleStopAll(ctx);
         return;
       }
 
@@ -823,6 +865,84 @@ export class TelegramBotService {
     await ctx.reply(text, { parse_mode: 'Markdown', reply_markup: keyboard });
   }
 
+  public async replyCancelPanel(ctx: any): Promise<void> {
+    const chatId = ctx.chat?.id || ctx.from?.id;
+    if (!chatId) return;
+    const session = botStorage.getSession(chatId);
+    const p = session.savedProfile;
+    const isChecking = this.isBusy();
+    const isMonitoring = Boolean(session.monitoringActive);
+    const hadDraft = Boolean(session.step || session.profileDraft);
+
+    // If an in-progress draft was active, clear it
+    if (hadDraft) {
+      session.step = undefined;
+      session.profileDraft = undefined;
+      botStorage.updateSession(chatId, session);
+    }
+
+    const draftMsg = hadDraft ? `❌ *Doldurulmaqda olan anket qaralaması ləğv edildi.*\n\n` : ``;
+
+    const statusMsg = [
+      `${draftMsg}⚙️ *Aktiv Prosesləri İdarəetmə və Ləğv Menyu:*`,
+      ``,
+      `*Mövcud Vəziyyət:*`,
+      `• *Cari Brauzer Yoxlaması:* ${isChecking ? '🔄 İCRA OLUNUR (Portala baxılır)' : '⚪ Aktiv deyil'}`,
+      `• *Avtomatik Monitorinq:* ${isMonitoring ? '🟢 AKTİV' : '🔴 DAYANDIRILIB'}`,
+      `• *Yadda Saxlanmış Profil:* ${p ? `${p.firstName} ${p.lastName} (\`${p.passportNumber}\`)` : 'Yoxdur'}`,
+      ``,
+      `Dayandırmaq və ya silmək istədiyiniz prosesi seçin:`,
+    ].join('\n');
+
+    const keyboard = new InlineKeyboard();
+
+    if (isChecking) {
+      keyboard.text('🛑 Cari Yoxlamanı Dayandır', 'cmd_abort_check').row();
+    }
+
+    if (isMonitoring) {
+      keyboard.text('⏸️ Avtomatik Monitorinqi Dayandır', 'cmd_stop').row();
+    } else if (p) {
+      keyboard.text('▶️ Monitorinqi Aktivləşdir', 'cmd_start').row();
+    }
+
+    // Always offer stopping all active processes
+    keyboard.text('🛑 Bütün Aktiv Prosesləri Dayandır', 'cmd_stop_all').row();
+
+    if (p) {
+      keyboard.text('🗑️ Bütün Məlumatları və Profili Sil', 'cmd_delete_profile').row();
+    }
+
+    keyboard.text('📊 Status', 'cmd_status').text('👤 Profilim', 'cmd_profile');
+
+    await ctx.reply(statusMsg, { parse_mode: 'Markdown', reply_markup: keyboard });
+  }
+
+  public async handleStopAll(ctx: any): Promise<void> {
+    const chatId = ctx.chat?.id || ctx.from?.id;
+    if (!chatId) return;
+    await this.abortRunningCheck();
+    this.checkInProgress = false;
+
+    const session = botStorage.getSession(chatId);
+    session.monitoringActive = false;
+    session.step = undefined;
+    session.profileDraft = undefined;
+    botStorage.updateSession(chatId, session);
+
+    const keyboard = new InlineKeyboard()
+      .text('▶️ Monitorinqi Aktivləşdir', 'cmd_start')
+      .text('🔍 İndi Yoxla', 'cmd_check_now')
+      .row()
+      .text('👤 Profilim', 'cmd_profile')
+      .text('🗑️ Məlumatları Sil', 'cmd_delete_profile');
+
+    await ctx.reply(
+      `🛑 *Bütün aktiv proseslər dayandırıldı!*\n\n• Cari brauzer yoxlaması dayandırıldı.\n• Avtomatik arxa plan monitorinqi dayandırıldı.\n• Qaralama formlar ləğv edildi.\n\n_Qeyd: Profil məlumatlarınız saxlanıldı. İstədiyiniz vaxt ▶️ /start\\_monitor və ya /check\\_now ilə davam edə bilərsiniz._`,
+      { parse_mode: 'Markdown', reply_markup: keyboard }
+    );
+  }
+
   public async triggerOnDemandCheck(
     chatId: number,
     options?: { isInitialCheck?: boolean }
@@ -1047,8 +1167,9 @@ export class TelegramBotService {
         { command: 'set_months',      description: '📅 Baxılacaq ayların sayını seçmək (1-6)' },
         { command: 'start_monitor',   description: '▶️ Avtomatik monitorinqi aktivləşdirmək' },
         { command: 'stop_monitor',    description: '⏸️ Avtomatik monitorinqi dayandırmaq' },
-        { command: 'cancel',          description: '❌ Cari əməliyyatı ləğv etmək' },
-        { command: 'delete_profile',  description: '🗑️ Bütün məlumatları birdəfəlik silmək' },
+        { command: 'stop_all',        description: '🛑 Bütün aktiv prosesləri dərhal dayandırmaq' },
+        { command: 'cancel',          description: '⚙️ Prosesləri idarə etmək və ləğv paneli' },
+        { command: 'delete_profile',  description: '🗑️ Bütün məlumatları və profili silmək' },
         { command: 'help',            description: '❓ Kömək və istifadə təlimatı' },
         { command: 'logs',            description: '📋 Son monitorinq fəaliyyətlərini göstərmək' },
       ]);

@@ -91,6 +91,26 @@ class CapagoMonitor {
     });
   }
 
+  private activeBrowser: any = null;
+
+  /**
+   * Aborts any currently running browser check iteration.
+   */
+  public async abortActiveCheck(): Promise<boolean> {
+    if (this.activeBrowser) {
+      console.log(`[Monitor] Aborting active browser check per user request...`);
+      telegramBotService.logActivity(`🛑 Cari yoxlama istifadəçi tərəfindən dayandırıldı`);
+      try {
+        await this.activeBrowser.close();
+      } catch {}
+      this.activeBrowser = null;
+      this.isCycleRunning = false;
+      telegramBotService.setBusy(false);
+      return true;
+    }
+    return false;
+  }
+
   /**
    * Performs an isolated scraping iteration using fresh stealth context with saved session.
    */
@@ -103,6 +123,7 @@ class CapagoMonitor {
     telegramBotService.logActivity(`🔄 Monitorinq başladı: *${who}* (${targetCenter} / ${targetCategory})`);
 
     const { browser, context, page } = await initStealthBrowser();
+    this.activeBrowser = browser;
 
     try {
       // 1. Session verification & authentication
@@ -143,10 +164,15 @@ class CapagoMonitor {
       return { report, screenshotPath };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      telegramBotService.logActivity(`❌ Dövr xətası: ${msg.slice(0, 80)}`);
-      console.error(`[Monitor] Error during cycle:`, msg);
+      if (msg.includes('closed') || msg.includes('Target closed') || msg.includes('Browser has been closed')) {
+        telegramBotService.logActivity(`🛑 Cari yoxlama istifadəçi tərəfindən dayandırıldı`);
+      } else {
+        telegramBotService.logActivity(`❌ Dövr xətası: ${msg.slice(0, 80)}`);
+        console.error(`[Monitor] Error during cycle:`, msg);
+      }
       return { report: null };
     } finally {
+      this.activeBrowser = null;
       // Clean up browser context after each iteration to prevent fingerprint tracking & memory leaks
       await page.close().catch(() => {});
       await context.close().catch(() => {});
@@ -214,6 +240,11 @@ class CapagoMonitor {
         this.isCycleRunning = false;
         telegramBotService.setBusy(false);
       }
+    });
+
+    // Attach bot abort handler for immediate cancellation
+    telegramBotService.setAbortHandler(async () => {
+      return await this.abortActiveCheck();
     });
 
     // Start Telegram bot listener if configured
