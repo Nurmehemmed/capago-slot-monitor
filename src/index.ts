@@ -38,14 +38,9 @@ class CapagoMonitor {
     const cycleStart = Date.now();
     const targetCategory = profile?.category || env.CAPAGO_CATEGORY;
     const targetCenter = profile?.center || env.CAPAGO_CENTER;
+    const who = profile ? `${profile.firstName} ${profile.lastName}` : 'default';
 
-    console.log(`\n======================================================`);
-    console.log(`[Monitor] Starting cycle at ${new Date().toLocaleTimeString()}`);
-    console.log(`[Monitor] Target Center: ${targetCenter} | Category: ${targetCategory}`);
-    if (profile) {
-      console.log(`[Monitor] Profile: ${profile.title} ${profile.firstName} ${profile.lastName} (${profile.passportNumber})`);
-    }
-    console.log(`======================================================`);
+    telegramBotService.logActivity(`🔄 Cycle started for *${who}* (${targetCenter} / ${targetCategory})`);
 
     const { browser, context, page } = await initStealthBrowser();
 
@@ -53,18 +48,20 @@ class CapagoMonitor {
       // 1. Session verification & authentication
       const authResult = await this.sessionManager.ensureAuthenticated(page, context);
       if (!authResult.authenticated) {
-        console.error(`[Monitor] Authentication failed. Aborting current cycle.`);
+        telegramBotService.logActivity(`❌ Authentication failed — check Capago credentials`);
         return null;
       }
+      telegramBotService.logActivity(`✅ Authenticated on Capago portal`);
 
       // 2. Navigate 6-step form progression to Calendar
       const formStepper = new FormStepper(page, profile);
       const navResult = await formStepper.navigateToCalendar();
 
       if (!navResult.success) {
-        console.warn(`[Monitor] Could not reach Calendar route in this iteration.`);
+        telegramBotService.logActivity(`⚠️ Could not reach Calendar — will retry next cycle`);
         return null;
       }
+      telegramBotService.logActivity(`📅 Calendar reached — scanning ${profile?.monthsToScan || env.MONTHS_TO_SCAN} month(s)`);
 
       // 3. Parse Calendar DOM for slots
       const monthsAhead = profile?.monthsToScan || env.MONTHS_TO_SCAN;
@@ -72,20 +69,21 @@ class CapagoMonitor {
       const report = await calendarParser.scanCalendar(monthsAhead);
 
       // 4. Alerting via Telegram Bot & Notifier
+      const elapsedSec = Math.round((Date.now() - cycleStart) / 1000);
       if (report.hasAvailableSlots) {
-        console.log(`[Monitor] >>> APPOINTMENT SLOTS DETECTED! DISPATCHING ALERTS <<<`);
+        telegramBotService.logActivity(`🚨 SLOTS FOUND! ${report.availableSlots.length} slot(s) on ${report.availableDays.length} day(s) — alerts dispatched!`);
         const screenshotPath = await calendarParser.captureSlotFoundScreenshot();
         await telegramBotService.broadcastAlert(report, screenshotPath);
         await telegramNotifier.sendAlert(report);
       } else {
-        console.log(`[Monitor] Cycle finished: No active slots at this time.`);
+        telegramBotService.logActivity(`✅ Cycle done in ${elapsedSec}s — no slots found (${report.totalDaysScanned} days scanned)`);
       }
 
-      const elapsedSec = Math.round((Date.now() - cycleStart) / 1000);
-      console.log(`[Monitor] Cycle completed in ${elapsedSec}s.`);
       return report;
     } catch (err) {
-      console.error(`[Monitor] Error during cycle:`, err instanceof Error ? err.message : err);
+      const msg = err instanceof Error ? err.message : String(err);
+      telegramBotService.logActivity(`❌ Cycle error: ${msg.slice(0, 80)}`);
+      console.error(`[Monitor] Error during cycle:`, msg);
       return null;
     } finally {
       // Clean up browser context after each iteration to prevent fingerprint tracking & memory leaks
@@ -94,6 +92,7 @@ class CapagoMonitor {
       await browser.close().catch(() => {});
     }
   }
+
 
   /**
    * Main continuous monitoring loop with randomized intervals.

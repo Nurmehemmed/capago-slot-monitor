@@ -10,6 +10,16 @@ export class TelegramBotService {
   private checkInProgress = false;
   private onTriggerCheck?: (chatId: number, profile?: ApplicantProfile) => Promise<ScrapeRunReport | null>;
 
+  // Ring buffer: last 20 activity log entries
+  private activityLog: { ts: string; msg: string }[] = [];
+
+  public logActivity(msg: string): void {
+    const ts = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    this.activityLog.push({ ts, msg });
+    if (this.activityLog.length > 20) this.activityLog.shift();
+    console.log(`[Monitor] ${msg}`);
+  }
+
   constructor() {
     if (this.isConfigured()) {
       this.bot = new Bot(env.TELEGRAM_BOT_TOKEN as string);
@@ -83,8 +93,30 @@ export class TelegramBotService {
         `4️⃣ *Cancel at Any Time*: Send /cancel to immediately abort an ongoing form or wizard.`,
         `5️⃣ *Delete Your Data*: Send /delete\\_profile to permanently wipe your passport and personal data from the bot.`,
         `6️⃣ *Instant Alert*: When slots open, you get a notification with the screenshot and exact times.`,
+        `7️⃣ *View Logs*: Send /logs to see recent monitoring activity right here in Telegram.`,
       ].join('\n');
       await ctx.reply(helpText, { parse_mode: 'Markdown' });
+    });
+
+    // --- /logs command ---
+    this.bot.command('logs', async (ctx) => {
+      if (this.activityLog.length === 0) {
+        await ctx.reply(
+          `📋 *No activity yet.*\n\nThe monitor hasn't run a cycle since the bot started.\nSend /check\\_now to trigger an immediate scan.`,
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
+
+      const lines = [
+        `📋 *Recent Monitoring Activity (last ${this.activityLog.length} events):*`,
+        ``,
+        ...this.activityLog.map((e) => `\`${e.ts}\` ${e.msg}`),
+        ``,
+        `_Use /check\\_now to trigger a scan immediately._`,
+      ];
+
+      await ctx.reply(lines.join('\n'), { parse_mode: 'Markdown' });
     });
 
     // --- /status command ---
@@ -932,6 +964,7 @@ export class TelegramBotService {
         { command: 'cancel',          description: '❌ Cancel any ongoing setup wizard' },
         { command: 'delete_profile',  description: '🗑️ Permanently delete your saved data' },
         { command: 'help',            description: '❓ Show help and usage guide' },
+        { command: 'logs',            description: '📋 View recent monitoring activity' },
       ]);
       console.log(`[Bot] Commands registered with Telegram (/ autocomplete enabled).`);
     } catch (err) {
