@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: capago-slot-monitor
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: HEADLESS
+        value: "true"
+      - key: PORT
+        value: "8080"
+      - key: CAPAGO_CENTER
+        value: "Baku"
+      - key: CAPAGO_CATEGORY
+        value: "Tourism"
+      - key: CAPAGO_VARIATION
+        value: "Schengen"
+      - key: MONTHS_TO_SCAN
+        value: "4"

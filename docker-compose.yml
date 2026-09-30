@@ -1,0 +1,17 @@
+services:
+  capago-monitor:
+    build: .
+    container_name: capago-slot-monitor
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - HEADLESS=true
+    volumes:
+      - ./storage:/app/storage
+      - ./screenshots:/app/screenshots
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"

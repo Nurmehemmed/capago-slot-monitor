@@ -1,0 +1,36 @@
+# fly.toml app configuration for Capago Slot Monitor
+app = "capago-slot-monitor"
+primary_region = "fra" # Frankfurt (closest to Capago EU infrastructure)
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  HEADLESS = "true"
+  PORT = "8080"
+  MONTHS_TO_SCAN = "4"
+  CAPAGO_CENTER = "Baku"
+  CAPAGO_CATEGORY = "Tourism"
+  CAPAGO_VARIATION = "Schengen"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = false
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 25
+    soft_limit = 20
+
+[[mounts]]
+  source = "capago_storage"
+  destination = "/app/storage"
+
+[[vm]]
+  memory = "1024mb" # Playwright Chromium needs >= 1GB RAM to prevent OOM
+  cpu_kind = "shared"
+  cpus = 1
