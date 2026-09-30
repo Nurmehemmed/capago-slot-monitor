@@ -1,69 +1,103 @@
-import fs from 'node:fs';
-import path from 'node:path';
+import postgres from 'postgres';
 import { UserBotSession, ApplicantProfile } from '../../types/index.js';
-import { env } from '../../config/env.js';
 
+/**
+ * BotStorage backed by Neon Postgres.
+ * Sessions survive server restarts and redeployments.
+ * Falls back to in-memory cache if DB is unavailable.
+ */
 export class BotStorage {
-  private readonly filePath: string;
-  private sessions: Record<string, UserBotSession> = {};
+  private sql: ReturnType<typeof postgres> | null = null;
+  private cache: Record<string, UserBotSession> = {};
+  private ready = false;
 
-  constructor(filePath?: string) {
-    this.filePath = filePath || path.resolve(process.cwd(), 'storage/bot_sessions.json');
-    this.ensureStorageDir();
-    this.load();
-  }
-
-  private ensureStorageDir(): void {
-    const dir = path.dirname(this.filePath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+  constructor() {
+    const dbUrl = process.env.DATABASE_URL;
+    if (!dbUrl) {
+      console.warn('[BotStorage] DATABASE_URL not set — using in-memory storage (profiles lost on restart).');
+      this.ready = true;
+      return;
     }
-  }
 
-  private load(): void {
-    if (fs.existsSync(this.filePath)) {
-      try {
-        const raw = fs.readFileSync(this.filePath, 'utf-8');
-        this.sessions = JSON.parse(raw);
-      } catch (err) {
-        console.warn(`[BotStorage] Could not parse sessions file, starting fresh:`, err);
-        this.sessions = {};
-      }
-    }
-  }
-
-  private save(): void {
     try {
-      this.ensureStorageDir();
-      fs.writeFileSync(this.filePath, JSON.stringify(this.sessions, null, 2), 'utf-8');
+      this.sql = postgres(dbUrl, {
+        ssl: 'require',
+        max: 3,
+        idle_timeout: 20,
+        connect_timeout: 10,
+      });
+      this.init().then(() => {
+        console.log('[BotStorage] Connected to Neon Postgres — sessions will persist across restarts.');
+        this.ready = true;
+      }).catch((err) => {
+        console.error('[BotStorage] DB init failed, falling back to in-memory:', err);
+        this.sql = null;
+        this.ready = true;
+      });
     } catch (err) {
-      console.error(`[BotStorage] Failed to save sessions:`, err);
+      console.error('[BotStorage] Failed to create DB client:', err);
+      this.ready = true;
+    }
+  }
+
+  private async init(): Promise<void> {
+    if (!this.sql) return;
+    await this.sql`
+      CREATE TABLE IF NOT EXISTS capago_sessions (
+        chat_id BIGINT PRIMARY KEY,
+        session_data JSONB NOT NULL,
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `;
+    // Warm the in-memory cache from DB
+    const rows = await this.sql`SELECT chat_id, session_data FROM capago_sessions`;
+    for (const row of rows) {
+      this.cache[String(row.chat_id)] = row.session_data as UserBotSession;
+    }
+    console.log(`[BotStorage] Loaded ${rows.length} session(s) from database.`);
+  }
+
+  private async persist(chatId: number): Promise<void> {
+    if (!this.sql) return;
+    const session = this.cache[String(chatId)];
+    if (!session) return;
+    try {
+      await this.sql`
+        INSERT INTO capago_sessions (chat_id, session_data, updated_at)
+        VALUES (${chatId}, ${JSON.stringify(session) as any}, NOW())
+        ON CONFLICT (chat_id)
+        DO UPDATE SET session_data = EXCLUDED.session_data, updated_at = NOW()
+      `;
+    } catch (err) {
+      console.error(`[BotStorage] Failed to persist session for chat ${chatId}:`, err);
     }
   }
 
   public getSession(chatId: number): UserBotSession {
     const key = String(chatId);
-    if (!this.sessions[key]) {
-      this.sessions[key] = {
+    if (!this.cache[key]) {
+      this.cache[key] = {
         chatId,
         monitoringActive: true,
-        savedProfile: undefined, // Only populated when user completes /new_application
+        savedProfile: undefined,
       };
-      this.save();
+      // Fire-and-forget persist
+      this.persist(chatId).catch(() => {});
     }
-    return this.sessions[key];
+    return this.cache[key];
   }
 
   public updateSession(chatId: number, data: Partial<UserBotSession>): UserBotSession {
     const session = this.getSession(chatId);
     Object.assign(session, data);
-    this.sessions[String(chatId)] = session;
-    this.save();
+    this.cache[String(chatId)] = session;
+    // Fire-and-forget persist
+    this.persist(chatId).catch(() => {});
     return session;
   }
 
   public getAllActiveSubscribers(): UserBotSession[] {
-    return Object.values(this.sessions).filter((s) => s.monitoringActive);
+    return Object.values(this.cache).filter((s) => s.monitoringActive);
   }
 
   public getActiveProfile(chatId: number): ApplicantProfile | undefined {

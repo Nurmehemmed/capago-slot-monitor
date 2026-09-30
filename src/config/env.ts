@@ -37,6 +37,9 @@ const envSchema = z.object({
     .transform((val) => val.toLowerCase() === 'true'),
   APPLICANT_FRANCE_VISAS_REF: z.string().optional(),
 
+  // Postgres Database for persistent session storage (survives restarts)
+  DATABASE_URL: z.string().url().optional(),
+
   // Telegram Alerting (Optional in local dev/dry-run)
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_CHAT_ID: z.string().optional(),
