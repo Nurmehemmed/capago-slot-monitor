@@ -4,11 +4,21 @@ import { env } from '../../config/env.js';
 import { ScrapeRunReport, ApplicantProfile } from '../../types/index.js';
 import { botStorage } from './bot.storage.js';
 
+export interface CheckResult {
+  report: ScrapeRunReport | null;
+  nextIntervalMinutes?: number;
+}
+
+export type CheckHandler = (
+  chatId: number,
+  profile?: ApplicantProfile
+) => Promise<CheckResult | ScrapeRunReport | null>;
+
 export class TelegramBotService {
   private bot: Bot | null = null;
   private isRunning = false;
   private checkInProgress = false;
-  private onTriggerCheck?: (chatId: number, profile?: ApplicantProfile) => Promise<ScrapeRunReport | null>;
+  private onTriggerCheck?: CheckHandler;
 
   // Ring buffer: last 20 activity log entries
   private activityLog: { ts: string; msg: string }[] = [];
@@ -18,6 +28,14 @@ export class TelegramBotService {
     this.activityLog.push({ ts, msg });
     if (this.activityLog.length > 20) this.activityLog.shift();
     console.log(`[Monitor] ${msg}`);
+  }
+
+  public isBusy(): boolean {
+    return this.checkInProgress;
+  }
+
+  public setBusy(busy: boolean): void {
+    this.checkInProgress = busy;
   }
 
   constructor() {
@@ -39,9 +57,7 @@ export class TelegramBotService {
     );
   }
 
-  public setCheckHandler(
-    handler: (chatId: number, profile?: ApplicantProfile) => Promise<ScrapeRunReport | null>
-  ): void {
+  public setCheckHandler(handler: CheckHandler): void {
     this.onTriggerCheck = handler;
   }
 
@@ -508,9 +524,16 @@ export class TelegramBotService {
         botStorage.updateSession(chatId, session);
 
         await ctx.reply(
-          `🎉 *Profile saved successfully!*\n\nAutomated background monitoring is now ACTIVE with your real application details.\n\n• *Applicant:* ${session.savedProfile.title} ${session.savedProfile.firstName} ${session.savedProfile.lastName}\n• *Passport:* \`${session.savedProfile.passportNumber}\`\n• *Scan Horizon:* ${session.savedProfile.monthsToScan} month(s) ahead\n\nYou will receive instant alerts the moment a matching slot opens.`,
+          `🎉 *Profile saved successfully!*\n\nAutomated background monitoring is now ACTIVE with your real application details.\n\n• *Applicant:* ${session.savedProfile.title} ${session.savedProfile.firstName} ${session.savedProfile.lastName}\n• *Passport:* \`${session.savedProfile.passportNumber}\`\n• *Scan Horizon:* ${session.savedProfile.monthsToScan} month(s) ahead\n\n🔍 *Starting your first slot check right now...*`,
           { parse_mode: 'Markdown' }
         );
+
+        // Immediately trigger the first slot check after submit
+        setTimeout(() => {
+          this.triggerOnDemandCheck(chatId, { isInitialCheck: true }).catch((err) => {
+            console.error(`[Bot] Error running initial check after submit:`, err);
+          });
+        }, 1200);
         return;
       }
 
@@ -785,7 +808,10 @@ export class TelegramBotService {
     await ctx.reply(text, { parse_mode: 'Markdown', reply_markup: keyboard });
   }
 
-  public async triggerOnDemandCheck(chatId: number): Promise<void> {
+  public async triggerOnDemandCheck(
+    chatId: number,
+    options?: { isInitialCheck?: boolean }
+  ): Promise<void> {
     if (!this.bot) return;
 
     if (this.checkInProgress) {
@@ -821,21 +847,36 @@ export class TelegramBotService {
     }
 
     const monthsAhead = profile.monthsToScan || env.MONTHS_TO_SCAN;
+    const headerMsg = options?.isInitialCheck
+      ? `🔍 *Starting initial slot check on Capago portal...*`
+      : `🔍 *Starting on-demand check on Capago portal...*`;
 
     await this.bot.api.sendMessage(
       chatId,
-      `🔍 *Starting on-demand check on Capago portal...*\nScanning across ${monthsAhead} month(s) ahead for *Baku / ${profile.category || 'Tourism'}* (${profile.firstName} ${profile.lastName}).\n_This takes ~60-90s to navigate stealthily._`,
+      `${headerMsg}\nScanning across ${monthsAhead} month(s) ahead for *Baku / ${profile.category || 'Tourism'}* (${profile.firstName} ${profile.lastName}).\n_This takes ~60-90s to navigate stealthily._`,
       { parse_mode: 'Markdown' }
     );
 
     try {
-      const report = await this.onTriggerCheck(chatId, profile);
+      const result = await this.onTriggerCheck(chatId, profile);
+      const report =
+        result && typeof result === 'object' && 'report' in result
+          ? result.report
+          : (result as ScrapeRunReport | null);
+      const nextIntervalMinutes =
+        result && typeof result === 'object' && 'nextIntervalMinutes' in result
+          ? result.nextIntervalMinutes
+          : undefined;
+
       if (report) {
-        await this.sendReportToChat(chatId, report);
+        await this.sendReportToChat(chatId, report, undefined, nextIntervalMinutes);
       } else {
+        const nextMsg = nextIntervalMinutes
+          ? ` Will retry in next scheduled cycle (in ~${nextIntervalMinutes}m).`
+          : ` Will retry in next scheduled cycle.`;
         await this.bot.api.sendMessage(
           chatId,
-          `⚠️ Check encountered an issue or could not complete navigation. Will retry in next scheduled cycle.`,
+          `⚠️ Check encountered an issue or could not complete navigation.${nextMsg}`,
           { parse_mode: 'Markdown' }
         );
       }
@@ -853,7 +894,8 @@ export class TelegramBotService {
   public async sendReportToChat(
     chatId: number,
     report: ScrapeRunReport,
-    screenshotPath?: string
+    screenshotPath?: string,
+    nextIntervalMinutes?: number
   ): Promise<void> {
     if (!this.bot) return;
 
@@ -861,9 +903,13 @@ export class TelegramBotService {
     const monthsAhead = session.savedProfile?.monthsToScan || env.MONTHS_TO_SCAN;
 
     if (!report.hasAvailableSlots) {
+      const scheduleNotice = nextIntervalMinutes
+        ? `\n\n🟢 Continuous monitoring is active. Next check scheduled in *~${nextIntervalMinutes} minutes*.`
+        : `\n\n🟢 Continuous monitoring is active and will alert you the moment a slot opens.`;
+
       await this.bot.api.sendMessage(
         chatId,
-        `📅 *Check Complete: No Available Slots Found*\n\nEvaluated ${report.totalDaysScanned} day tiles across ${monthsAhead} month(s) for *${report.center} - ${report.category}*.\n\n🟢 Continuous monitoring is active and will alert you the moment a slot opens.`,
+        `📅 *Check Complete: No Available Slots Found*\n\nEvaluated ${report.totalDaysScanned} day tiles across ${monthsAhead} month(s) for *${report.center} - ${report.category}*.${scheduleNotice}`,
         { parse_mode: 'Markdown' }
       );
       return;
