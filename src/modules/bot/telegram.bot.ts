@@ -6,6 +6,7 @@ import { botStorage } from './bot.storage.js';
 
 export interface CheckResult {
   report: ScrapeRunReport | null;
+  screenshotPath?: string;
   nextIntervalMinutes?: number;
 }
 
@@ -867,9 +868,13 @@ export class TelegramBotService {
         result && typeof result === 'object' && 'nextIntervalMinutes' in result
           ? result.nextIntervalMinutes
           : undefined;
+      const screenshotPath =
+        result && typeof result === 'object' && 'screenshotPath' in result
+          ? result.screenshotPath
+          : undefined;
 
       if (report) {
-        await this.sendReportToChat(chatId, report, undefined, nextIntervalMinutes);
+        await this.sendReportToChat(chatId, report, screenshotPath, nextIntervalMinutes);
       } else {
         const nextMsg = nextIntervalMinutes
           ? ` Will retry in next scheduled cycle (in ~${nextIntervalMinutes}m).`
@@ -900,7 +905,8 @@ export class TelegramBotService {
     if (!this.bot) return;
 
     const session = botStorage.getSession(chatId);
-    const monthsAhead = session.savedProfile?.monthsToScan || env.MONTHS_TO_SCAN;
+    const profile = session.savedProfile;
+    const monthsAhead = profile?.monthsToScan || env.MONTHS_TO_SCAN;
 
     if (!report.hasAvailableSlots) {
       const scheduleNotice = nextIntervalMinutes
@@ -915,7 +921,19 @@ export class TelegramBotService {
       return;
     }
 
-    // Slots found! Build rich alert with inline buttons
+    // Slots found! Send visual screenshot proof first if available
+    if (screenshotPath && fs.existsSync(screenshotPath)) {
+      try {
+        await this.bot.api.sendPhoto(chatId, new InputFile(screenshotPath), {
+          caption: `📸 *Live Capago Portal Proof: Open Visa Slots Detected!*`,
+          parse_mode: 'Markdown',
+        });
+      } catch (err) {
+        console.warn(`[Bot] Could not send screenshot:`, err);
+      }
+    }
+
+    // Slots found! Build rich alert with fast-track booking instructions
     const lines: string[] = [
       `🚨 *CAPAGO VISA APPOINTMENT SLOTS AVAILABLE!* 🚨`,
       ``,
@@ -944,22 +962,26 @@ export class TelegramBotService {
     }
 
     lines.push(``);
-    lines.push(`🔗 [Open Capago Portal](${env.CAPAGO_PORTAL_URL})`);
+    lines.push(`⚡ *Fast-Track Booking Instructions:*`);
+    lines.push(`_Capago's portal is a client-side wizard — direct URLs to Step 6 (Calendar) do not exist because each device must complete Steps 1–5 locally. Follow these 30-second steps to secure your slot:_`);
+    lines.push(``);
+    lines.push(`1️⃣ Tap the *🚀 Open Capago Booking Portal* button below.`);
+    lines.push(`2️⃣ *Step 1 & 2:* Check consent boxes ➔ Select *Baku*.`);
+    lines.push(`3️⃣ *Step 3:* 1 Applicant ➔ Tap each field below to copy:`);
+    if (profile) {
+      lines.push(`   • Name: \`${profile.firstName} ${profile.lastName}\``);
+      lines.push(`   • Passport: \`${profile.passportNumber}\``);
+      lines.push(`   • DOB: \`${profile.dob}\``);
+      lines.push(`   • Phone: \`${profile.phone}\``);
+      lines.push(`   • Departure: \`${profile.departureDate}\``);
+      lines.push(`   • Assistance: *${profile.needsFranceVisasAssistance ? 'Yes (+24 AZN)' : 'No'}*`);
+    }
+    lines.push(`4️⃣ *Step 4 & 5:* Select *Tourism / Schengen* ➔ Skip optional extras.`);
+    lines.push(`5️⃣ *Step 6 (Calendar):* Click the open date ➔ select time ➔ check the security box ➔ click *Confirm Appointment*!`);
+    lines.push(``);
     lines.push(`⏱️ *Detected:* ${new Date().toLocaleTimeString()}`);
 
     keyboard.url('🚀 Open Capago Booking Portal', env.CAPAGO_PORTAL_URL);
-
-    // Send screenshot if exists
-    if (screenshotPath && fs.existsSync(screenshotPath)) {
-      try {
-        await this.bot.api.sendPhoto(chatId, new InputFile(screenshotPath), {
-          caption: `📸 *Live Slot Proof on Capago Portal*`,
-          parse_mode: 'Markdown',
-        });
-      } catch (err) {
-        console.warn(`[Bot] Could not send screenshot:`, err);
-      }
-    }
 
     await this.bot.api.sendMessage(chatId, lines.join('\n'), {
       parse_mode: 'Markdown',

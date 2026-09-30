@@ -10,6 +10,11 @@ import { telegramBotService } from './modules/bot/telegram.bot.js';
 import { botStorage } from './modules/bot/bot.storage.js';
 import { ApplicantProfile, ScrapeRunReport, UserBotSession } from './types/index.js';
 
+export interface CycleExecutionResult {
+  report: ScrapeRunReport | null;
+  screenshotPath?: string;
+}
+
 class CapagoMonitor {
   private readonly abortController = new AbortController();
   private isRunning = false;
@@ -89,7 +94,7 @@ class CapagoMonitor {
   /**
    * Performs an isolated scraping iteration using fresh stealth context with saved session.
    */
-  public async executeCycle(profile?: ApplicantProfile): Promise<ScrapeRunReport | null> {
+  public async executeCycle(profile?: ApplicantProfile): Promise<CycleExecutionResult> {
     const cycleStart = Date.now();
     const targetCategory = profile?.category || env.CAPAGO_CATEGORY;
     const targetCenter = profile?.center || env.CAPAGO_CENTER;
@@ -104,7 +109,7 @@ class CapagoMonitor {
       const authResult = await this.sessionManager.ensureAuthenticated(page, context);
       if (!authResult.authenticated) {
         telegramBotService.logActivity(`❌ Authentication failed — check Capago credentials`);
-        return null;
+        return { report: null };
       }
       telegramBotService.logActivity(`✅ Authenticated on Capago portal`);
 
@@ -114,7 +119,7 @@ class CapagoMonitor {
 
       if (!navResult.success) {
         telegramBotService.logActivity(`⚠️ Could not reach Calendar — will retry next cycle`);
-        return null;
+        return { report: null };
       }
       telegramBotService.logActivity(`📅 Calendar reached — scanning ${profile?.monthsToScan || env.MONTHS_TO_SCAN} month(s)`);
 
@@ -125,21 +130,22 @@ class CapagoMonitor {
 
       // 4. Alerting via Telegram Bot & Notifier
       const elapsedSec = Math.round((Date.now() - cycleStart) / 1000);
+      let screenshotPath: string | undefined;
+
       if (report.hasAvailableSlots) {
         telegramBotService.logActivity(`🚨 SLOTS FOUND! ${report.availableSlots.length} slot(s) on ${report.availableDays.length} day(s) — alerts dispatched!`);
-        const screenshotPath = await calendarParser.captureSlotFoundScreenshot();
-        await telegramBotService.broadcastAlert(report, screenshotPath);
+        screenshotPath = await calendarParser.captureSlotFoundScreenshot();
         await telegramNotifier.sendAlert(report);
       } else {
         telegramBotService.logActivity(`✅ Cycle done in ${elapsedSec}s — no slots found (${report.totalDaysScanned} days scanned)`);
       }
 
-      return report;
+      return { report, screenshotPath };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       telegramBotService.logActivity(`❌ Cycle error: ${msg.slice(0, 80)}`);
       console.error(`[Monitor] Error during cycle:`, msg);
-      return null;
+      return { report: null };
     } finally {
       // Clean up browser context after each iteration to prevent fingerprint tracking & memory leaks
       await page.close().catch(() => {});
@@ -168,10 +174,10 @@ class CapagoMonitor {
         console.log(
           `[Monitor] Running cycle for ${sub.username || sub.chatId} (${profile.title} ${profile.firstName} ${profile.lastName} - Passport: ${profile.passportNumber})...`
         );
-        const report = await this.executeCycle(profile);
+        const { report, screenshotPath } = await this.executeCycle(profile);
         if (report && report.hasAvailableSlots) {
           console.log(`[Monitor] Sending slot alert directly to user ${sub.chatId}...`);
-          await telegramBotService.sendReportToChat(sub.chatId, report);
+          await telegramBotService.sendReportToChat(sub.chatId, report, screenshotPath);
         }
       }
 
@@ -200,10 +206,10 @@ class CapagoMonitor {
       telegramBotService.setBusy(true);
 
       try {
-        const report = await this.executeCycle(profile);
+        const { report, screenshotPath } = await this.executeCycle(profile);
         // Interval countdown begins strictly AFTER this first / on-demand monitoring check completes!
         const interval = this.scheduleNextCheck();
-        return { report, nextIntervalMinutes: interval.minutes };
+        return { report, screenshotPath, nextIntervalMinutes: interval.minutes };
       } finally {
         this.isCycleRunning = false;
         telegramBotService.setBusy(false);
