@@ -15,6 +15,18 @@ export type CheckHandler = (
   profile?: ApplicantProfile
 ) => Promise<CheckResult | ScrapeRunReport | null>;
 
+export function getCategoryDisplay(cat?: string): string {
+  if (cat === 'Business') return 'Biznes';
+  if (cat === 'Study') return 'Təhsil';
+  return 'Turizm / Şəxsi Səfər';
+}
+
+export function getTitleDisplay(title?: string): string {
+  if (title === 'Mrs') return 'Xanım (Mrs)';
+  if (title === 'Miss') return 'Xanım / Qız (Miss)';
+  return 'Cənab (Mr)';
+}
+
 export class TelegramBotService {
   private bot: Bot | null = null;
   private isRunning = false;
@@ -69,36 +81,36 @@ export class TelegramBotService {
     this.bot.command('start', async (ctx) => {
       const chatId = ctx.chat.id;
       const session = botStorage.getSession(chatId);
-      session.username = ctx.from?.username || ctx.from?.first_name || 'User';
+      session.username = ctx.from?.username || ctx.from?.first_name || 'İstifadəçi';
       botStorage.updateSession(chatId, { username: session.username });
 
       const welcomeText = [
-        `👋 *Welcome to Capago Visa Slot Monitor Bot!*`,
+        `👋 *Capago Viza Slot Monitor Botuna Xoş Gəlmisiniz!*`,
         ``,
-        `I monitor the Capago Azerbaijan portal (*https://appointment-az.capago.eu/*) 24/7 for French Schengen visa appointments in Baku.`,
+        `Mən Bakıdakı Fransa Şengen vizası üçün Capago Azərbaycan portalını (*https://appointment-az.capago.eu/*) 24/7 rejimində izləyirəm.`,
         ``,
-        `🔔 When slots appear, I will alert you *instantly* with exact dates, times, and direct portal links.`,
+        `🔔 Boş yer (slot) açılan kimi sizə dərhal dəqiq tarix, saat və portal linki ilə bildiriş göndərəcəyəm.`,
         ``,
-        `*Quick Commands:*`,
-        `📝 /new\\_application - Setup your visa application profile`,
-        `🔍 /check\\_now - Trigger an instant check right now`,
-        `📅 /set\\_months - Change how many months forward to monitor (1-6)`,
-        `📊 /status - Check current monitor status`,
-        `👤 /profile - View your saved applicant info`,
-        `❌ /cancel - Cancel any ongoing wizard or form`,
-        `🗑️ /delete\\_profile - Permanently delete your data from the bot`,
-        `⏸️ /stop\\_monitor - Pause automatic notifications`,
-        `▶️ /start\\_monitor - Resume automatic notifications`,
-        `❓ /help - Help and usage guide`,
+        `*Əsas Komandalar:*`,
+        `📝 /new\\_application - Viza müraciət profilini yaratmaq`,
+        `🔍 /check\\_now - İndi dərhal yerləri yoxlamaq`,
+        `📅 /set\\_months - Baxılacaq ayların sayını seçmək (1-6)`,
+        `📊 /status - Monitorinqin cari vəziyyəti`,
+        `👤 /profile - Yadda saxlanmış müraciət məlumatları`,
+        `❌ /cancel - Cari formu və ya əməliyyatı ləğv etmək`,
+        `🗑️ /delete\\_profile - Məlumatlarınızı botdan birdəfəlik silmək`,
+        `⏸️ /stop\\_monitor - Avtomatik bildirişləri dayandırmaq`,
+        `▶️ /start\\_monitor - Avtomatik bildirişləri davam etdirmək`,
+        `❓ /help - Kömək və istifadə təlimatı`,
       ].join('\n');
 
       const keyboard = new InlineKeyboard()
-        .text('📝 Setup Application', 'cmd_new_app')
-        .text('🔍 Check Slots Now', 'cmd_check_now')
+        .text('📝 Profili Doldur', 'cmd_new_app')
+        .text('🔍 İndi Yoxla', 'cmd_check_now')
         .row()
-        .text('📅 Scan Horizon', 'cmd_set_months')
+        .text('📅 Baxış Müddəti', 'cmd_set_months')
         .text('📊 Status', 'cmd_status')
-        .text('👤 Profile', 'cmd_profile');
+        .text('👤 Profilim', 'cmd_profile');
 
       await ctx.reply(welcomeText, { parse_mode: 'Markdown', reply_markup: keyboard });
     });
@@ -106,15 +118,15 @@ export class TelegramBotService {
     // --- /help command ---
     this.bot.command('help', async (ctx) => {
       const helpText = [
-        `📖 *Capago Slot Monitor Guide*`,
+        `📖 *Capago Slot Monitor Təlimatı*`,
         ``,
-        `1️⃣ *Configure Application*: Use /new\\_application to enter your details step-by-step.`,
-        `2️⃣ *Custom Horizon*: Choose how many months ahead to scan (1 to 6 months) via /set\\_months.`,
-        `3️⃣ *Automatic Monitoring*: Runs in the background every ${env.MIN_CHECK_INTERVAL_MINUTES}-${env.MAX_CHECK_INTERVAL_MINUTES} mins.`,
-        `4️⃣ *Cancel at Any Time*: Send /cancel to immediately abort an ongoing form or wizard.`,
-        `5️⃣ *Delete Your Data*: Send /delete\\_profile to permanently wipe your passport and personal data from the bot.`,
-        `6️⃣ *Instant Alert*: When slots open, you get a notification with the screenshot and exact times.`,
-        `7️⃣ *View Logs*: Send /logs to see recent monitoring activity right here in Telegram.`,
+        `1️⃣ *Profili Doldurun*: /new\\_application komandası ilə məlumatlarınızı addım-addım daxil edin.`,
+        `2️⃣ *Baxış Müddəti*: /set\\_months komandası ilə neçə ay irəliyə axtarış aparılacağını (1-6 ay) seçin.`,
+        `3️⃣ *Avtomatik İzləmə*: Bot arxa fonda hər ${env.MIN_CHECK_INTERVAL_MINUTES}-${env.MAX_CHECK_INTERVAL_MINUTES} dəqiqədən bir avtomatik yoxlayır.`,
+        `4️⃣ *İstənilən Vaxt Ləğv Edin*: /cancel yazaraq cari form doldurma prosesini dayandıra bilərsiniz.`,
+        `5️⃣ *Məlumatları Silin*: /delete\\_profile komandası ilə pasport və şəxsi məlumatlarınızı botdan birdəfəlik silə bilərsiniz.`,
+        `6️⃣ *Dərhal Bildiriş*: Boş yer açılan kimi ekran şəkli və mövcud saatlarla dərhal bildiriş alacaqsınız.`,
+        `7️⃣ *Fəaliyyət Qeydləri*: /logs komandası ilə son monitorinq fəaliyyətlərini buradan izləyə bilərsiniz.`,
       ].join('\n');
       await ctx.reply(helpText, { parse_mode: 'Markdown' });
     });
@@ -123,18 +135,18 @@ export class TelegramBotService {
     this.bot.command('logs', async (ctx) => {
       if (this.activityLog.length === 0) {
         await ctx.reply(
-          `📋 *No activity yet.*\n\nThe monitor hasn't run a cycle since the bot started.\nSend /check\\_now to trigger an immediate scan.`,
+          `📋 *Hələ fəaliyyət qeydi yoxdur.*\n\nBot işə düşəndən bəri hələ yoxlama dövrü baş verməyib.\nDərhal yoxlamaq üçün /check\\_now komandasını göndərin.`,
           { parse_mode: 'Markdown' }
         );
         return;
       }
 
       const lines = [
-        `📋 *Recent Monitoring Activity (last ${this.activityLog.length} events):*`,
+        `📋 *Son Monitorinq Qeydləri (son ${this.activityLog.length} hadisə):*`,
         ``,
         ...this.activityLog.map((e) => `\`${e.ts}\` ${e.msg}`),
         ``,
-        `_Use /check\\_now to trigger a scan immediately._`,
+        `_Dərhal yoxlamaq üçün /check\\_now komandasından istifadə edin._`,
       ];
 
       await ctx.reply(lines.join('\n'), { parse_mode: 'Markdown' });
@@ -165,11 +177,11 @@ export class TelegramBotService {
       botStorage.updateSession(chatId, session);
 
       if (hadActiveStep) {
-        await ctx.reply(`❌ *Form cancelled.* Your in-progress application draft has been discarded.`, {
+        await ctx.reply(`❌ *Form ləğv edildi.* Doldurulmaqda olan qaralama məlumatlar silindi.`, {
           parse_mode: 'Markdown',
         });
       } else {
-        await ctx.reply(`ℹ️ There is no active operation to cancel. You can use /new\\_application or /check\\_now.`, {
+        await ctx.reply(`ℹ️ Hal-hazırda ləğv ediləcək aktiv əməliyyat yoxdur. /new\\_application və ya /check\\_now istifadə edə bilərsiniz.`, {
           parse_mode: 'Markdown',
         });
       }
@@ -181,16 +193,16 @@ export class TelegramBotService {
       const session = botStorage.getSession(chatId);
 
       if (!session.savedProfile) {
-        await ctx.reply(`ℹ️ You don't have any saved application profile to delete.`, { parse_mode: 'Markdown' });
+        await ctx.reply(`ℹ️ Silinəcək yadda saxlanmış profil tapılmadı.`, { parse_mode: 'Markdown' });
         return;
       }
 
       const kb = new InlineKeyboard()
-        .text('⚠️ Yes, Delete All My Data', 'confirm_delete_profile')
-        .text('❌ Cancel', 'cmd_profile');
+        .text('⚠️ Bəli, Bütün Məlumatlarımı Sil', 'confirm_delete_profile')
+        .text('❌ Ləğv et', 'cmd_profile');
 
       await ctx.reply(
-        `⚠️ *Delete Profile & Wipe Data?*\n\nAre you sure you want to delete your profile?\n\n• Name: *${session.savedProfile.firstName} ${session.savedProfile.lastName}*\n• Passport: \`${session.savedProfile.passportNumber}\`\n\nAll personal data will be *permanently erased* from the server, and automatic slot monitoring will stop immediately.`,
+        `⚠️ *Profili Silmək və Məlumatları Təmizləmək?*\n\nProfilinizi silmək istədiyinizdən əminsiniz?\n\n• Ad: *${session.savedProfile.firstName} ${session.savedProfile.lastName}*\n• Pasport: \`${session.savedProfile.passportNumber}\`\n\nBütün şəxsi məlumatlarınız serverdən *birdəfəlik silinəcək* və avtomatik yer axtarışı dərhal dayandırılacaq.`,
         { parse_mode: 'Markdown', reply_markup: kb }
       );
     });
@@ -198,7 +210,7 @@ export class TelegramBotService {
     // --- /start_monitor command ---
     this.bot.command('start_monitor', async (ctx) => {
       botStorage.updateSession(ctx.chat.id, { monitoringActive: true });
-      await ctx.reply(`✅ *Continuous monitoring is ACTIVE.* You will receive instant notifications when slots open.`, {
+      await ctx.reply(`✅ *Avtomatik monitorinq AKTİVDİR.* Boş yer açılan kimi dərhal bildiriş alacaqsınız.`, {
         parse_mode: 'Markdown',
       });
     });
@@ -206,7 +218,7 @@ export class TelegramBotService {
     // --- /stop_monitor command ---
     this.bot.command('stop_monitor', async (ctx) => {
       botStorage.updateSession(ctx.chat.id, { monitoringActive: false });
-      await ctx.reply(`⏸️ *Continuous monitoring is PAUSED.* Use /start\\_monitor to resume.`, {
+      await ctx.reply(`⏸️ *Avtomatik monitorinq DAYANDIRILDI.* Yenidən aktivləşdirmək üçün /start\\_monitor göndərin.`, {
         parse_mode: 'Markdown',
       });
     });
@@ -220,13 +232,13 @@ export class TelegramBotService {
       });
 
       const keyboard = new InlineKeyboard()
-        .text('👨 Mr', 'title_mr')
-        .text('👩 Mrs', 'title_mrs')
-        .text('👧 Miss', 'title_miss')
+        .text('👨 Cənab (Mr)', 'title_mr')
+        .text('👩 Xanım (Mrs)', 'title_mrs')
+        .text('👧 Xanım / Qız (Miss)', 'title_miss')
         .row()
-        .text('❌ Cancel', 'cancel_wizard');
+        .text('❌ Ləğv et', 'cancel_wizard');
 
-      await ctx.reply(`📝 *New Application Profile Setup (1/10)*\n\nPlease select your title:\n_(Type /cancel at any time to abort)_`, {
+      await ctx.reply(`📝 *Yeni Müraciət Profilinin Yaradılması (1/10)*\n\nZəhmət olmasa müraciət formasını seçin:\n_(İstənilən vaxt dayandırmaq üçün /cancel yaza bilərsiniz)_`, {
         parse_mode: 'Markdown',
         reply_markup: keyboard,
       });
@@ -248,10 +260,12 @@ export class TelegramBotService {
       if (data === 'cmd_new_app') {
         botStorage.updateSession(chatId, { step: 'AWAITING_TITLE', profileDraft: {} });
         const keyboard = new InlineKeyboard()
-          .text('👨 Mr', 'title_mr')
-          .text('👩 Mrs', 'title_mrs')
-          .text('👧 Miss', 'title_miss');
-        await ctx.reply(`📝 *New Application Profile Setup (1/9)*\n\nPlease select your title:`, {
+          .text('👨 Cənab (Mr)', 'title_mr')
+          .text('👩 Xanım (Mrs)', 'title_mrs')
+          .text('👧 Xanım / Qız (Miss)', 'title_miss')
+          .row()
+          .text('❌ Ləğv et', 'cancel_wizard');
+        await ctx.reply(`📝 *Yeni Müraciət Profilinin Yaradılması (1/10)*\n\nZəhmət olmasa müraciət formasını seçin:\n_(İstənilən vaxt dayandırmaq üçün /cancel yaza bilərsiniz)_`, {
           parse_mode: 'Markdown',
           reply_markup: keyboard,
         });
@@ -280,7 +294,7 @@ export class TelegramBotService {
 
       if (data === 'cmd_stop') {
         botStorage.updateSession(chatId, { monitoringActive: false });
-        await ctx.reply(`⏸️ *Monitoring PAUSED.* Use /start\\_monitor or the Resume button to reactivate.`, {
+        await ctx.reply(`⏸️ *Monitorinq DAYANDIRILDI.* Yenidən aktivləşdirmək üçün /start\\_monitor və ya "Davam et" düyməsindən istifadə edin.`, {
           parse_mode: 'Markdown',
         });
         return;
@@ -290,13 +304,13 @@ export class TelegramBotService {
         const session = botStorage.getSession(chatId);
         if (!session.savedProfile) {
           await ctx.reply(
-            `⚠️ *No profile configured.* Use /new\\_application first to enter your real application details.`,
+            `⚠️ *Profil quraşdırılmayıb.* Əvvəlcə /new\\_application komandası ilə real müraciət məlumatlarınızı daxil edin.`,
             { parse_mode: 'Markdown' }
           );
           return;
         }
         botStorage.updateSession(chatId, { monitoringActive: true });
-        await ctx.reply(`✅ *Monitoring RESUMED.* You will receive instant alerts when slots open.`, {
+        await ctx.reply(`✅ *Monitorinq DAVAM ETDİRİLDİ.* Boş yer açılan kimi dərhal bildiriş alacaqsınız.`, {
           parse_mode: 'Markdown',
         });
         return;
@@ -307,21 +321,21 @@ export class TelegramBotService {
         session.step = undefined;
         session.profileDraft = undefined;
         botStorage.updateSession(chatId, session);
-        await ctx.reply(`❌ *Application setup cancelled.* Your in-progress draft was discarded.`, { parse_mode: 'Markdown' });
+        await ctx.reply(`❌ *Müraciət formasının doldurulması ləğv edildi.* Qaralama məlumatlar silindi.`, { parse_mode: 'Markdown' });
         return;
       }
 
       if (data === 'cmd_delete_profile') {
         const session = botStorage.getSession(chatId);
         if (!session.savedProfile) {
-          await ctx.reply(`ℹ️ You don't have any saved application profile to delete.`, { parse_mode: 'Markdown' });
+          await ctx.reply(`ℹ️ Silinəcək yadda saxlanmış profil tapılmadı.`, { parse_mode: 'Markdown' });
           return;
         }
         const kb = new InlineKeyboard()
-          .text('⚠️ Yes, Delete All My Data', 'confirm_delete_profile')
-          .text('❌ Cancel', 'cmd_profile');
+          .text('⚠️ Bəli, Bütün Məlumatlarımı Sil', 'confirm_delete_profile')
+          .text('❌ Ləğv et', 'cmd_profile');
         await ctx.reply(
-          `⚠️ *Delete Profile & Wipe Data?*\n\nAre you sure you want to delete your profile?\n\n• Name: *${session.savedProfile.firstName} ${session.savedProfile.lastName}*\n• Passport: \`${session.savedProfile.passportNumber}\`\n\nAll personal data will be *permanently erased* from the server, and automatic slot monitoring will stop immediately.`,
+          `⚠️ *Profili Silmək və Məlumatları Təmizləmək?*\n\nProfilinizi silmək istədiyinizdən əminsiniz?\n\n• Ad: *${session.savedProfile.firstName} ${session.savedProfile.lastName}*\n• Pasport: \`${session.savedProfile.passportNumber}\`\n\nBütün şəxsi məlumatlarınız serverdən *birdəfəlik silinəcək* və avtomatik yer axtarışı dərhal dayandırılacaq.`,
           { parse_mode: 'Markdown', reply_markup: kb }
         );
         return;
@@ -336,7 +350,7 @@ export class TelegramBotService {
         botStorage.updateSession(chatId, session);
 
         await ctx.reply(
-          `🗑️ *Profile Deleted Successfully.*\n\nAll your personal details have been permanently erased from the server. Background monitoring is now stopped.\n\nUse /new\\_application if you wish to set up a new profile in the future.`,
+          `🗑️ *Profil Uğurla Silindi.*\n\nBütün şəxsi məlumatlarınız serverdən birdəfəlik silindi. Arxa plan monitorinqi dayandırıldı.\n\nGələcəkdə yeni profil quraşdırmaq üçün /new\\_application istifadə edə bilərsiniz.`,
           { parse_mode: 'Markdown' }
         );
         return;
@@ -350,7 +364,7 @@ export class TelegramBotService {
         session.step = 'AWAITING_FIRSTNAME';
         botStorage.updateSession(chatId, session);
 
-        await ctx.reply(`✅ Title set to *${title}*.\n\n*Step 2/10:* Please enter your *First Name* (as in passport):`, {
+        await ctx.reply(`✅ Müraciət forması seçildi: *${getTitleDisplay(title)}*.\n\n*Addım 2/10:* Zəhmət olmasa xarici pasportdakı *Adınızı* daxil edin:`, {
           parse_mode: 'Markdown',
         });
         return;
@@ -370,17 +384,17 @@ export class TelegramBotService {
         botStorage.updateSession(chatId, session);
 
         const keyboard = new InlineKeyboard()
-          .text('1 Month', 'months_1')
-          .text('2 Months', 'months_2')
+          .text('1 Ay', 'months_1')
+          .text('2 Ay', 'months_2')
           .row()
-          .text('3 Months', 'months_3')
-          .text('4 Months (Recommended)', 'months_4')
+          .text('3 Ay', 'months_3')
+          .text('4 Ay (Tövsiyə olunur)', 'months_4')
           .row()
-          .text('5 Months', 'months_5')
-          .text('6 Months (Max Schengen)', 'months_6');
+          .text('5 Ay', 'months_5')
+          .text('6 Ay (Maksimum Şengen)', 'months_6');
 
         await ctx.reply(
-          `📅 *Step 10/10: Monitoring Horizon*\n\nHow many months forward would you like me to monitor for available appointment slots?\n\n_Note: Schengen regulations allow booking appointments up to 6 months in advance._`,
+          `📅 *Addım 10/10: Axtarış Müddəti*\n\nPortalda neçə ay irəliyə qədər boş yerlərin axtarılmasını istəyirsiniz?\n\n_Qeyd: Şengen qaydalarına əsasən, ən çox 6 ay irəliyə görüş götürmək mümkündür._`,
           { parse_mode: 'Markdown', reply_markup: keyboard }
         );
         return;
@@ -399,34 +413,34 @@ export class TelegramBotService {
 
           const draft = session.profileDraft;
           const fvDisplay = draft.needsFranceVisasAssistance
-            ? '💼 Capago Assistance (+24 AZN)'
+            ? '💼 Capago Köməkliyi (+24 AZN)'
             : draft.franceVisasRef
             ? `\`${draft.franceVisasRef}\``
-            : '💼 Capago Assistance (+24 AZN)';
+            : '💼 Capago Köməkliyi (+24 AZN)';
 
           const summary = [
-            `📋 *Review Your Visa Application Details:*`,
+            `📋 *Viza Müraciəti Məlumatlarınızı Yoxlayın:*`,
             ``,
-            `• *Title:* ${draft.title || 'Mr'}`,
-            `• *Name:* ${draft.firstName} ${draft.lastName}`,
-            `• *Passport:* \`${draft.passportNumber}\``,
-            `• *Date of Birth:* ${draft.dob}`,
-            `• *Phone:* ${draft.phone}`,
-            `• *Departure Date:* ${draft.departureDate}`,
-            `• *France-Visas Form:* ${fvDisplay}`,
-            `• *Center:* Baku`,
-            `• *Category:* ${draft.category}`,
-            `• *Visa Type:* Schengen (EU Agreement)`,
-            `• *Scan Horizon:* ${draft.monthsToScan} month(s) ahead`,
+            `• *Müraciət:* ${getTitleDisplay(draft.title)}`,
+            `• *Ad və Soyad:* ${draft.firstName} ${draft.lastName}`,
+            `• *Pasport:* \`${draft.passportNumber}\``,
+            `• *Doğum Tarixi:* ${draft.dob}`,
+            `• *Telefon:* ${draft.phone}`,
+            `• *Səfər Tarixi:* ${draft.departureDate}`,
+            `• *France-Visas Forması:* ${fvDisplay}`,
+            `• *Mərkəz:* Bakı`,
+            `• *Kateqoriya:* ${getCategoryDisplay(draft.category)}`,
+            `• *Viza Növü:* Şengen (Aİ Qaydaları)`,
+            `• *Axtarış Müddəti:* ${draft.monthsToScan} ay irəli`,
             ``,
-            `⚠️ *Please verify:* Details must match your passport exactly to prevent consular rejection!`,
+            `⚠️ *Diqqət:* Konsulluq tərəfindən imtinanın qarşısını almaq üçün məlumatlar pasportunuzla tam eyni olmalıdır!`,
             ``,
-            `Confirm these details to begin automated monitoring:`,
+            `Avtomatik axtarışı başlatmaq üçün bu məlumatları təsdiqləyin:`,
           ].join('\n');
 
           const keyboard = new InlineKeyboard()
-            .text('✅ Confirm & Save', 'confirm_save')
-            .text('❌ Cancel', 'confirm_cancel');
+            .text('✅ Təsdiqlə və Saxla', 'confirm_save')
+            .text('❌ Ləğv et', 'confirm_cancel');
 
           await ctx.reply(summary, { parse_mode: 'Markdown', reply_markup: keyboard });
           return;
@@ -437,11 +451,11 @@ export class TelegramBotService {
           session.savedProfile.monthsToScan = count;
           botStorage.updateSession(chatId, session);
           await ctx.reply(
-            `✅ *Scan horizon updated!* The monitor will now scan *${count} month(s) ahead* on Capago portal.`,
+            `✅ *Axtarış müddəti yeniləndi!* Bot artıq Capago portalında *${count} ay irəli* axtarış aparacaq.`,
             { parse_mode: 'Markdown' }
           );
         } else {
-          await ctx.reply(`⚠️ No saved profile found. Use /new\\_application to setup.`, { parse_mode: 'Markdown' });
+          await ctx.reply(`⚠️ Yadda saxlanmış profil tapılmadı. Quraşdırmaq üçün /new\\_application istifadə edin.`, { parse_mode: 'Markdown' });
         }
         return;
       }
@@ -458,13 +472,13 @@ export class TelegramBotService {
         botStorage.updateSession(chatId, session);
 
         const keyboard = new InlineKeyboard()
-          .text('🏖️ Tourism / Private', 'cat_tourism')
-          .text('💼 Business', 'cat_business')
+          .text('🏖️ Turizm / Şəxsi Səfər', 'cat_tourism')
+          .text('💼 Biznes', 'cat_business')
           .row()
-          .text('🎓 Study', 'cat_student');
+          .text('🎓 Təhsil', 'cat_student');
 
         await ctx.reply(
-          `💼 *Capago Assistance Selected (+24 AZN)*\n\nNo France-Visas reference number is required now. Capago staff will assist you with completing the official form at the Baku center.\n\n*Step 9/9:* Please select your *Visa Category*:`,
+          `💼 *Capago Köməkliyi Seçildi (+24 AZN)*\n\nİndi France-Visas nömrəsi daxil etməyə ehtiyac yoxdur. Bakı mərkəzində Capago əməkdaşları rəsmi formanı doldurmaqda sizə kömək edəcəklər.\n\n*Addım 9/10:* Zəhmət olmasa *Viza Kateqoriyasını* seçin:`,
           { parse_mode: 'Markdown', reply_markup: keyboard }
         );
         return;
@@ -476,7 +490,7 @@ export class TelegramBotService {
         botStorage.updateSession(chatId, session);
 
         await ctx.reply(
-          `📝 *Step 8b:* Please enter your official *France-Visas Application Reference* (starts with \`FRA...\`, e.g. \`FRA12345678901234567\`):\n\n_Note: You must have obtained this on https://france-visas.gouv.fr/en/._`,
+          `📝 *Addım 8b:* Zəhmət olmasa rəsmi *France-Visas Ərizə Nömrənizi* daxil edin (\`FRA\` ilə başlayır, məsələn: \`FRA12345678901234567\`):\n\n_Qeyd: Bu nömrəni https://france-visas.gouv.fr/ saytında qeydiyyatdan keçdikdən sonra əldə etməlisiniz._`,
           { parse_mode: 'Markdown' }
         );
         return;
@@ -497,7 +511,7 @@ export class TelegramBotService {
           !draft.departureDate?.trim()
         ) {
           await ctx.reply(
-            `❌ *Incomplete Application Details!*\n\nSome required fields are missing. To protect against visa cancellation, we cannot proceed without your complete real details.\n\nPlease start over with /new\\_application.`,
+            `❌ *Məlumatlar Tam Deyil!*\n\nBəzi vacib sahələr doldurulmayıb. Görüşün ləğv edilməsinin qarşısını almaq üçün real məlumatlar olmadan davam etmək mümkün deyil.\n\nZəhmət olmasa /new\\_application ilə yenidən başlayın.`,
             { parse_mode: 'Markdown' }
           );
           return;
@@ -525,7 +539,7 @@ export class TelegramBotService {
         botStorage.updateSession(chatId, session);
 
         await ctx.reply(
-          `🎉 *Profile saved successfully!*\n\nAutomated background monitoring is now ACTIVE with your real application details.\n\n• *Applicant:* ${session.savedProfile.title} ${session.savedProfile.firstName} ${session.savedProfile.lastName}\n• *Passport:* \`${session.savedProfile.passportNumber}\`\n• *Scan Horizon:* ${session.savedProfile.monthsToScan} month(s) ahead\n\n🔍 *Starting your first slot check right now...*`,
+          `🎉 *Profil uğurla yadda saxlanıldı!*\n\nAvtomatik arxa plan monitorinqi real məlumatlarınızla AKTİVLƏŞDİRİLDİ.\n\n• *Müraciətçi:* ${getTitleDisplay(session.savedProfile.title)} ${session.savedProfile.firstName} ${session.savedProfile.lastName}\n• *Pasport:* \`${session.savedProfile.passportNumber}\`\n• *Axtarış Müddəti:* ${session.savedProfile.monthsToScan} ay irəli\n\n🔍 *İlk yoxlama indi başladılır...*`,
           { parse_mode: 'Markdown' }
         );
 
@@ -540,7 +554,7 @@ export class TelegramBotService {
 
       if (data === 'confirm_cancel') {
         botStorage.updateSession(chatId, { step: undefined, profileDraft: undefined });
-        await ctx.reply(`❌ Setup cancelled. Kept previous profile.`, { parse_mode: 'Markdown' });
+        await ctx.reply(`❌ Quraşdırma ləğv edildi. Əvvəlki profil saxlanıldı.`, { parse_mode: 'Markdown' });
         return;
       }
 
@@ -550,18 +564,18 @@ export class TelegramBotService {
         const [date, time] = slotPayload.split('_');
 
         const responseMsg = [
-          `🎯 *Slot Selected: ${date} at ${time || 'Available time'}*`,
+          `🎯 *Seçilmiş Vaxt: ${date}, saat ${time || 'Mövcud saat'}*`,
           ``,
-          `To finalize your appointment:`,
-          `1️⃣ Click the link below to open the portal.`,
-          `2️⃣ Confirm your selected time (*${time || 'Slot'}*).`,
-          `3️⃣ Complete the security verification checkbox.`,
-          `4️⃣ Click *Confirm Appointment*.`,
+          `Görüşünüzü rəsmiləşdirmək üçün:`,
+          `1️⃣ Aşağıdakı düyməyə klikləyərək portalı açın.`,
+          `2️⃣ Seçdiyiniz saatı təsdiqləyin (*${time || 'Slot'}*).`,
+          `3️⃣ Təhlükəsizlik yoxlama qutusunu ("I am not a robot") işarələyin.`,
+          `4️⃣ *Confirm Appointment* düyməsinə klikləyin.`,
           ``,
-          `🔗 [Open Capago Portal](${env.CAPAGO_PORTAL_URL})`,
+          `🔗 [Capago Portalına Keçid](${env.CAPAGO_PORTAL_URL})`,
         ].join('\n');
 
-        const kb = new InlineKeyboard().url('🚀 Go to Capago Portal', env.CAPAGO_PORTAL_URL);
+        const kb = new InlineKeyboard().url('🚀 Capago Portalına Keçid', env.CAPAGO_PORTAL_URL);
         await ctx.reply(responseMsg, { parse_mode: 'Markdown', reply_markup: kb });
         return;
       }
@@ -580,7 +594,7 @@ export class TelegramBotService {
         session.step = undefined;
         session.profileDraft = undefined;
         botStorage.updateSession(chatId, session);
-        await ctx.reply(`❌ *Form cancelled.* Your application draft was discarded. Send /new\\_application when ready to start again.`, {
+        await ctx.reply(`❌ *Form ləğv edildi.* Qaralama məlumatlar silindi. Hazır olduqda /new\\_application göndərə bilərsiniz.`, {
           parse_mode: 'Markdown',
         });
         return;
@@ -599,7 +613,7 @@ export class TelegramBotService {
           session.profileDraft = { ...(session.profileDraft || {}), firstName: text.trim() };
           session.step = 'AWAITING_LASTNAME';
           botStorage.updateSession(chatId, session);
-          await ctx.reply(`*Step 3/9:* Please enter your *Last Name* (as in passport):`, {
+          await ctx.reply(`*Addım 3/10:* Zəhmət olmasa xarici pasportdakı *Soyadınızı* daxil edin:`, {
             parse_mode: 'Markdown',
           });
           break;
@@ -609,7 +623,7 @@ export class TelegramBotService {
           session.step = 'AWAITING_PASSPORT';
           botStorage.updateSession(chatId, session);
           await ctx.reply(
-            `*Step 4/9:* Please enter your *Passport Number* (e.g. \`A81242122\`):`,
+            `*Addım 4/10:* Zəhmət olmasa *Pasport Nömrənizi* daxil edin (məsələn: \`C03783829\`):`,
             { parse_mode: 'Markdown' }
           );
           break;
@@ -620,7 +634,7 @@ export class TelegramBotService {
           session.step = 'AWAITING_DOB';
           botStorage.updateSession(chatId, session);
           await ctx.reply(
-            `*Step 5/9:* Please enter your *Date of Birth* in \`dd/mm/yyyy\` format (e.g. \`15/05/1990\`):`,
+            `*Addım 5/10:* Zəhmət olmasa *Doğum Tarixinizi* \`gg/aa/iiii\` formatında daxil edin (məsələn: \`15/09/1999\`):`,
             { parse_mode: 'Markdown' }
           );
           break;
@@ -632,7 +646,7 @@ export class TelegramBotService {
           session.step = 'AWAITING_PHONE';
           botStorage.updateSession(chatId, session);
           await ctx.reply(
-            `*Step 6/9:* Please enter your *Mobile Phone Number* (e.g. \`0517111589\`):`,
+            `*Addım 6/10:* Zəhmət olmasa *Mobil Telefon Nömrənizi* daxil edin (məsələn: \`0517111589\`):`,
             { parse_mode: 'Markdown' }
           );
           break;
@@ -643,7 +657,7 @@ export class TelegramBotService {
           session.step = 'AWAITING_DEPARTURE_DATE';
           botStorage.updateSession(chatId, session);
           await ctx.reply(
-            `*Step 7/9:* Please enter your *Estimated Departure Date* in \`dd/mm/yyyy\` format (e.g. \`01/12/2026\`):`,
+            `*Addım 7/10:* Zəhmət olmasa *Təxmini Səfər Tarixinizi* \`gg/aa/iiii\` formatında daxil edin (məsələn: \`21/11/2026\`):`,
             { parse_mode: 'Markdown' }
           );
           break;
@@ -654,19 +668,19 @@ export class TelegramBotService {
           botStorage.updateSession(chatId, session);
 
           const keyboard = new InlineKeyboard()
-            .text('📝 I have my FRA Reference Number', 'fv_has_number')
+            .text('📝 Məndə FRA nömrəsi var', 'fv_has_number')
             .row()
-            .text('💼 Capago Form Assistance (+24 AZN)', 'fv_need_assist');
+            .text('💼 Capago Köməkliyi (+24 AZN)', 'fv_need_assist');
 
           const promptText = [
-            `*Step 8/9: France-Visas Form Option*`,
+            `*Addım 8/10: France-Visas Ərizə Forması*`,
             ``,
-            `*Do you need help with your France-Visas form?*`,
-            `1️⃣ *I have my France-Visas number:* You completed your registration on https://france-visas.gouv.fr/en/ and have an official reference number starting with \`FRA...\`.`,
+            `*France-Visas forması üçün kömək lazımdırmı?*`,
+            `1️⃣ *Məndə France-Visas nömrəsi var:* Siz https://france-visas.gouv.fr/ saytında qeydiyyatdan keçmisiniz və \`FRA...\` ilə başlayan rəsmi nömrəniz var.`,
             ``,
-            `2️⃣ *Capago Assistance (24 AZN):* Capago staff will assist you with filling out and validating your official form at the Baku center. *No FRA number required.*`,
+            `2️⃣ *Capago Köməkliyi (24 AZN):* Bakı mərkəzində Capago əməkdaşları rəsmi formanı doldurmağa və yoxlamağa kömək edəcək. *FRA nömrəsi tələb olunmur.*`,
             ``,
-            `⚠️ *Consular Notice:* Never enter a fake or placeholder reference number! The French consulate checks the number against the official visa database, and an invalid number causes automatic appointment cancellation.`,
+            `⚠️ *Konsulluq Qaydası:* Heç vaxt saxta və ya təsadüfi nömrə daxil etməyin! Fransa konsulluğu nömrəni rəsmi viza bazasından yoxlayır və səhv nömrə görüşün avtomatik ləğvinə səbəb olur.`,
           ].join('\n');
 
           await ctx.reply(promptText, {
@@ -680,9 +694,9 @@ export class TelegramBotService {
           const rawRef = text.trim().toUpperCase();
           if (!rawRef.startsWith('FRA') || rawRef.length < 10) {
             const kb = new InlineKeyboard()
-              .text('💼 Switch to Capago Assistance (24 AZN)', 'fv_need_assist');
+              .text('💼 Capago Köməkliyinə Keç (+24 AZN)', 'fv_need_assist');
             await ctx.reply(
-              `⚠️ *Invalid France-Visas Reference Number!*\n\nOfficial references start with \`FRA\` and have at least 10 characters (e.g. \`FRA12345678901234567\`).\n\nIf you have not registered on france-visas.gouv.fr yet, do NOT enter a fake number as it will cause visa refusal/cancellation! Choose Capago assistance instead:`,
+              `⚠️ *Yanlış France-Visas Nömrəsi!*\n\nRəsmi nömrələr \`FRA\` ilə başlayır və ən az 10 simvoldan ibarət olur (məsələn: \`FRA12345678901234567\`).\n\nƏgər hələ france-visas.gouv.fr saytında qeydiyyatdan keçməmisinizsə, əsla saxta nömrə yazmayın (vizanın ləğvinə səbəb olur)! Bunun əvəzinə Capago köməkliyini seçin:`,
               { parse_mode: 'Markdown', reply_markup: kb }
             );
             return;
@@ -697,13 +711,13 @@ export class TelegramBotService {
           botStorage.updateSession(chatId, session);
 
           const keyboard = new InlineKeyboard()
-            .text('🏖️ Tourism / Private', 'cat_tourism')
-            .text('💼 Business', 'cat_business')
+            .text('🏖️ Turizm / Şəxsi Səfər', 'cat_tourism')
+            .text('💼 Biznes', 'cat_business')
             .row()
-            .text('🎓 Study', 'cat_student');
+            .text('🎓 Təhsil', 'cat_student');
 
           await ctx.reply(
-            `✅ *France-Visas Reference Recorded:* \`${rawRef}\`\n\n*Step 9/9:* Please select your *Visa Category*:`,
+            `✅ *France-Visas Nömrəsi Qeydə Alındı:* \`${rawRef}\`\n\n*Addım 9/10:* Zəhmət olmasa *Viza Kateqoriyasını* seçin:`,
             { parse_mode: 'Markdown', reply_markup: keyboard }
           );
           break;
@@ -721,26 +735,26 @@ export class TelegramBotService {
     const monthsAhead = profile?.monthsToScan || env.MONTHS_TO_SCAN;
 
     const statusText = [
-      `📊 *Capago Slot Monitor Status*`,
+      `📊 *Capago Slot Monitor Vəziyyəti*`,
       ``,
-      `• *Monitoring:* ${session.monitoringActive ? '🟢 ACTIVE' : '🔴 PAUSED'}`,
-      `• *Target Center:* Baku`,
-      `• *Visa Category:* ${profile?.category || env.CAPAGO_CATEGORY}`,
-      `• *Visa Variation:* Standard Schengen (EU Agreement)`,
-      `• *Scan Horizon:* ${monthsAhead} month(s) ahead`,
-      `• *Interval:* Every ${env.MIN_CHECK_INTERVAL_MINUTES}-${env.MAX_CHECK_INTERVAL_MINUTES} mins (randomized)`,
+      `• *Monitorinq:* ${session.monitoringActive ? '🟢 AKTİVDİR' : '🔴 DAYANDIRILIB'}`,
+      `• *Mərkəz:* Bakı`,
+      `• *Viza Kateqoriyası:* ${getCategoryDisplay(profile?.category || env.CAPAGO_CATEGORY)}`,
+      `• *Viza Növü:* Standart Şengen (Aİ Qaydaları)`,
+      `• *Axtarış Müddəti:* ${monthsAhead} ay irəli`,
+      `• *Yoxlama İntervalı:* Hər ${env.MIN_CHECK_INTERVAL_MINUTES}-${env.MAX_CHECK_INTERVAL_MINUTES} dəqiqədən bir (təsadüfi)`,
       `• *Portal:* ${env.CAPAGO_PORTAL_URL}`,
       ``,
       profile
-        ? `👤 *Configured Applicant:* ${profile.title} ${profile.firstName} ${profile.lastName} (\`${profile.passportNumber}\`)`
-        : `⚠️ *No custom profile configured.* Using default config.`,
+        ? `👤 *Qeydiyyatdan Keçən Şəxs:* ${getTitleDisplay(profile.title)} ${profile.firstName} ${profile.lastName} (\`${profile.passportNumber}\`)`
+        : `⚠️ *Xüsusi profil daxil edilməyib.* Standart tənzimləmələrdən istifadə olunur.`,
     ].join('\n');
 
     const keyboard = new InlineKeyboard()
-      .text('🔍 Check Now', 'cmd_check_now')
-      .text('📅 Scan Horizon', 'cmd_set_months')
+      .text('🔍 İndi Yoxla', 'cmd_check_now')
+      .text('📅 Baxış Müddəti', 'cmd_set_months')
       .row()
-      .text(session.monitoringActive ? '⏸️ Pause' : '▶️ Resume', session.monitoringActive ? 'cmd_stop' : 'cmd_start');
+      .text(session.monitoringActive ? '⏸️ Dayandır' : '▶️ Davam et', session.monitoringActive ? 'cmd_stop' : 'cmd_start');
 
     await ctx.reply(statusText, { parse_mode: 'Markdown', reply_markup: keyboard });
   }
@@ -750,17 +764,17 @@ export class TelegramBotService {
     const current = session.savedProfile?.monthsToScan || env.MONTHS_TO_SCAN;
 
     const keyboard = new InlineKeyboard()
-      .text(current === 1 ? '✅ 1 Month' : '1 Month', 'months_1')
-      .text(current === 2 ? '✅ 2 Months' : '2 Months', 'months_2')
+      .text(current === 1 ? '✅ 1 Ay' : '1 Ay', 'months_1')
+      .text(current === 2 ? '✅ 2 Ay' : '2 Ay', 'months_2')
       .row()
-      .text(current === 3 ? '✅ 3 Months' : '3 Months', 'months_3')
-      .text(current === 4 ? '✅ 4 Months' : '4 Months (Recommended)', 'months_4')
+      .text(current === 3 ? '✅ 3 Ay' : '3 Ay', 'months_3')
+      .text(current === 4 ? '✅ 4 Ay' : '4 Ay (Tövsiyə olunur)', 'months_4')
       .row()
-      .text(current === 5 ? '✅ 5 Months' : '5 Months', 'months_5')
-      .text(current === 6 ? '✅ 6 Months' : '6 Months (Max Schengen)', 'months_6');
+      .text(current === 5 ? '✅ 5 Ay' : '5 Ay', 'months_5')
+      .text(current === 6 ? '✅ 6 Ay' : '6 Ay (Maksimum Şengen)', 'months_6');
 
     await ctx.reply(
-      `📅 *Set Monitoring Horizon*\n\nSelect how many months forward you want the bot to scan on the Capago calendar:\n_(Currently: *${current} month(s) ahead*. Schengen rules allow booking up to 6 months in advance)_`,
+      `📅 *Axtarış Müddətini Təyin Edin*\n\nBotun Capago təqvimində neçə ay irəli axtarış aparmasını istədiyinizi seçin:\n_(Hazırda: *${current} ay irəli*. Şengen qaydalarına əsasən, ən çox 6 ay irəliyə görüş götürmək olar)_`,
       { parse_mode: 'Markdown', reply_markup: keyboard }
     );
   }
@@ -770,41 +784,41 @@ export class TelegramBotService {
     const p = session.savedProfile;
 
     if (!p) {
-      await ctx.reply(`⚠️ No profile configured. Run /new\\_application to set up.`, {
+      await ctx.reply(`⚠️ Profil quraşdırılmayıb. Məlumatları daxil etmək üçün /new\\_application işə salın.`, {
         parse_mode: 'Markdown',
       });
       return;
     }
 
     const fvText = p.needsFranceVisasAssistance
-      ? '💼 Capago Assistance (+24 AZN)'
+      ? '💼 Capago Köməkliyi (+24 AZN)'
       : p.franceVisasRef
       ? `\`${p.franceVisasRef}\``
-      : '💼 Capago Assistance (+24 AZN)';
+      : '💼 Capago Köməkliyi (+24 AZN)';
 
     const monthsAhead = p.monthsToScan || env.MONTHS_TO_SCAN;
 
     const text = [
-      `👤 *Saved Applicant Profile:*`,
+      `👤 *Yadda Saxlanmış Müraciət Profili:*`,
       ``,
-      `• *Title:* ${p.title}`,
-      `• *Full Name:* ${p.firstName} ${p.lastName}`,
-      `• *Passport Number:* \`${p.passportNumber}\``,
-      `• *Date of Birth:* ${p.dob}`,
-      `• *Phone:* ${p.phone}`,
-      `• *Departure Date:* ${p.departureDate}`,
-      `• *France-Visas Form:* ${fvText}`,
-      `• *Center:* ${p.center || 'Baku'}`,
-      `• *Category:* ${p.category || 'Tourism'}`,
-      `• *Visa Variation:* Schengen (EU Agreement)`,
-      `• *Scan Horizon:* ${monthsAhead} month(s) ahead`,
+      `• *Müraciət Forması:* ${getTitleDisplay(p.title)}`,
+      `• *Ad və Soyad:* ${p.firstName} ${p.lastName}`,
+      `• *Pasport Nömrəsi:* \`${p.passportNumber}\``,
+      `• *Doğum Tarixi:* ${p.dob}`,
+      `• *Telefon:* ${p.phone}`,
+      `• *Səfər Tarixi:* ${p.departureDate}`,
+      `• *France-Visas Forması:* ${fvText}`,
+      `• *Mərkəz:* Bakı`,
+      `• *Kateqoriya:* ${getCategoryDisplay(p.category)}`,
+      `• *Viza Növü:* Standart Şengen (Aİ Qaydaları)`,
+      `• *Axtarış Müddəti:* ${monthsAhead} ay irəli`,
       ``,
-      `_To modify details, send /new\\_application or /set\\_months._`,
+      `_Məlumatları dəyişmək üçün /new\\_application və ya /set\\_months istifadə edə bilərsiniz._`,
     ].join('\n');
 
     const keyboard = new InlineKeyboard()
-      .text('📅 Change Horizon', 'cmd_set_months')
-      .text('📝 Edit Profile', 'cmd_new_app');
+      .text('📅 Müddəti Dəyiş', 'cmd_set_months')
+      .text('📝 Profili Redaktə Et', 'cmd_new_app');
 
     await ctx.reply(text, { parse_mode: 'Markdown', reply_markup: keyboard });
   }
@@ -818,7 +832,7 @@ export class TelegramBotService {
     if (this.checkInProgress) {
       await this.bot.api.sendMessage(
         chatId,
-        `⏳ *A check is currently in progress.* Please wait a moment for it to complete.`,
+        `⏳ *Hal-hazırda yoxlama aparılır.* Zəhmət olmasa bitməsini gözləyin.`,
         { parse_mode: 'Markdown' }
       );
       return;
@@ -827,7 +841,7 @@ export class TelegramBotService {
     if (!this.onTriggerCheck) {
       await this.bot.api.sendMessage(
         chatId,
-        `⚠️ Monitor engine is not attached to the bot.`,
+        `⚠️ Monitorinq modulu bota qoşulmayıb.`,
         { parse_mode: 'Markdown' }
       );
       return;
@@ -841,7 +855,7 @@ export class TelegramBotService {
       this.checkInProgress = false;
       await this.bot.api.sendMessage(
         chatId,
-        `⚠️ *No Application Profile Found!*\n\nTo prevent visa cancellation and portal errors, we *strictly* avoid checking with dummy or placeholder data.\n\nPlease enter your real application details using /new\\_application before checking slots.`,
+        `⚠️ *Müraciət Profili Tapılmadı!*\n\nViza müraciətinin ləğv edilməsinin və portal xətalarının qarşısını almaq üçün saxta və ya boş məlumatlarla yoxlama aparılmır.\n\nZəhmət olmasa yerləri yoxlamazdan əvvəl /new\\_application ilə real məlumatlarınızı daxil edin.`,
         { parse_mode: 'Markdown' }
       );
       return;
@@ -849,12 +863,12 @@ export class TelegramBotService {
 
     const monthsAhead = profile.monthsToScan || env.MONTHS_TO_SCAN;
     const headerMsg = options?.isInitialCheck
-      ? `🔍 *Starting initial slot check on Capago portal...*`
-      : `🔍 *Starting on-demand check on Capago portal...*`;
+      ? `🔍 *Capago portalında ilk yoxlama başladılır...*`
+      : `🔍 *Capago portalında yoxlama başladılır...*`;
 
     await this.bot.api.sendMessage(
       chatId,
-      `${headerMsg}\nScanning across ${monthsAhead} month(s) ahead for *Baku / ${profile.category || 'Tourism'}* (${profile.firstName} ${profile.lastName}).\n_This takes ~60-90s to navigate stealthily._`,
+      `${headerMsg}\n*Bakı / ${getCategoryDisplay(profile.category)}* (${profile.firstName} ${profile.lastName}) üçün ${monthsAhead} ay irəli axtarılır.\n_Təhlükəsiz keçid üçün təxminən 60-90 saniyə çəkir._`,
       { parse_mode: 'Markdown' }
     );
 
@@ -877,18 +891,18 @@ export class TelegramBotService {
         await this.sendReportToChat(chatId, report, screenshotPath, nextIntervalMinutes);
       } else {
         const nextMsg = nextIntervalMinutes
-          ? ` Will retry in next scheduled cycle (in ~${nextIntervalMinutes}m).`
-          : ` Will retry in next scheduled cycle.`;
+          ? ` Növbəti qrafik üzrə (~${nextIntervalMinutes} dəqiqəyə) təkrar cəhd ediləcək.`
+          : ` Növbəti qrafik üzrə təkrar cəhd ediləcək.`;
         await this.bot.api.sendMessage(
           chatId,
-          `⚠️ Check encountered an issue or could not complete navigation.${nextMsg}`,
+          `⚠️ Yoxlama zamanı xəta baş verdi və ya səhifə açılmadı.${nextMsg}`,
           { parse_mode: 'Markdown' }
         );
       }
     } catch (err) {
       await this.bot.api.sendMessage(
         chatId,
-        `❌ Error running check: ${err instanceof Error ? err.message : String(err)}`,
+        `❌ Yoxlama zamanı xəta baş verdi: ${err instanceof Error ? err.message : String(err)}`,
         { parse_mode: 'Markdown' }
       );
     } finally {
@@ -910,12 +924,12 @@ export class TelegramBotService {
 
     if (!report.hasAvailableSlots) {
       const scheduleNotice = nextIntervalMinutes
-        ? `\n\n🟢 Continuous monitoring is active. Next check scheduled in *~${nextIntervalMinutes} minutes*.`
-        : `\n\n🟢 Continuous monitoring is active and will alert you the moment a slot opens.`;
+        ? `\n\n🟢 Avtomatik monitorinq aktivdir. Növbəti yoxlama *~${nextIntervalMinutes} dəqiqə* sonra planlaşdırılıb.`
+        : `\n\n🟢 Avtomatik monitorinq aktivdir və yer açılan kimi dərhal bildiriş göndərəcək.`;
 
       await this.bot.api.sendMessage(
         chatId,
-        `📅 *Check Complete: No Available Slots Found*\n\nEvaluated ${report.totalDaysScanned} day tiles across ${monthsAhead} month(s) for *${report.center} - ${report.category}*.${scheduleNotice}`,
+        `📅 *Yoxlama Tamamlandı: Boş Yer Tapılmadı*\n\n*${report.center} - ${getCategoryDisplay(report.category)}* üzrə ${monthsAhead} ay ərzində cəmi ${report.totalDaysScanned} gün yoxlandı.${scheduleNotice}`,
         { parse_mode: 'Markdown' }
       );
       return;
@@ -925,7 +939,7 @@ export class TelegramBotService {
     if (screenshotPath && fs.existsSync(screenshotPath)) {
       try {
         await this.bot.api.sendPhoto(chatId, new InputFile(screenshotPath), {
-          caption: `📸 *Live Capago Portal Proof: Open Visa Slots Detected!*`,
+          caption: `📸 *Canlı Capago Sübutu: Boş Viza Yerləri Aşkar Edildi!*`,
           parse_mode: 'Markdown',
         });
       } catch (err) {
@@ -935,21 +949,21 @@ export class TelegramBotService {
 
     // Slots found! Build rich alert with fast-track booking instructions
     const lines: string[] = [
-      `🚨 *CAPAGO VISA APPOINTMENT SLOTS AVAILABLE!* 🚨`,
+      `🚨 *CAPAGO VİZA ÜÇÜN BOŞ YERLƏR TAPILDI!* 🚨`,
       ``,
-      `📍 *Center:* ${report.center}`,
-      `🏷️ *Category:* ${report.category}`,
-      `📅 *Days with Slots:* ${report.availableDays.length}`,
-      `⏰ *Total Detected Slots:* ${report.availableSlots.length}`,
+      `📍 *Mərkəz:* ${report.center}`,
+      `🏷️ *Kateqoriya:* ${getCategoryDisplay(report.category)}`,
+      `📅 *Yer Olan Günlərin Sayı:* ${report.availableDays.length}`,
+      `⏰ *Ümumi Tapılan Boş Saatlar:* ${report.availableSlots.length}`,
       ``,
-      `*Available Dates:*`,
+      `*Mövcud Tarixlər:*`,
     ];
 
     const keyboard = new InlineKeyboard();
 
     for (const day of report.availableDays.slice(0, 6)) {
       const slotTexts = day.slots.map((s) => s.time || '').filter(Boolean);
-      const textList = slotTexts.length > 0 ? slotTexts.slice(0, 5).join(', ') : 'Open';
+      const textList = slotTexts.length > 0 ? slotTexts.slice(0, 5).join(', ') : 'Açıq';
       lines.push(`• 📅 *${day.date}*: \`${textList}\``);
 
       // Add clickable buttons for slots
@@ -962,26 +976,26 @@ export class TelegramBotService {
     }
 
     lines.push(``);
-    lines.push(`⚡ *Fast-Track Booking Instructions:*`);
-    lines.push(`_Capago's portal is a client-side wizard — direct URLs to Step 6 (Calendar) do not exist because each device must complete Steps 1–5 locally. Follow these 30-second steps to secure your slot:_`);
+    lines.push(`⚡ *Sürətli Qeydiyyat Təlimatı:*`);
+    lines.push(`_Capago portalı addım-addım işləyir — 6-cı addıma (Təqvim) birbaşa link yoxdur, çünki hər bir şəxs 1-5-ci addımları öz cihazında təsdiqləməlidir. Yeri dərhal götürmək üçün bu 30 saniyəlik təlimata əməl edin:_`);
     lines.push(``);
-    lines.push(`1️⃣ Tap the *🚀 Open Capago Booking Portal* button below.`);
-    lines.push(`2️⃣ *Step 1 & 2:* Check consent boxes ➔ Select *Baku*.`);
-    lines.push(`3️⃣ *Step 3:* 1 Applicant ➔ Tap each field below to copy:`);
+    lines.push(`1️⃣ Aşağıdakı *🚀 Capago Portalına Keçid* düyməsinə klikləyin.`);
+    lines.push(`2️⃣ *Addım 1 və 2:* Razılıq qutularını işarələyin ➔ *Bakı* mərkəzini seçin.`);
+    lines.push(`3️⃣ *Addım 3:* 1 Müraciətçi ➔ Məlumatları köçürmək üçün aşağıdakı sətirlərə toxunaraq kopyalayın:`);
     if (profile) {
-      lines.push(`   • Name: \`${profile.firstName} ${profile.lastName}\``);
-      lines.push(`   • Passport: \`${profile.passportNumber}\``);
-      lines.push(`   • DOB: \`${profile.dob}\``);
-      lines.push(`   • Phone: \`${profile.phone}\``);
-      lines.push(`   • Departure: \`${profile.departureDate}\``);
-      lines.push(`   • Assistance: *${profile.needsFranceVisasAssistance ? 'Yes (+24 AZN)' : 'No'}*`);
+      lines.push(`   • Ad və Soyad: \`${profile.firstName} ${profile.lastName}\``);
+      lines.push(`   • Pasport: \`${profile.passportNumber}\``);
+      lines.push(`   • Doğum Tarixi: \`${profile.dob}\``);
+      lines.push(`   • Telefon: \`${profile.phone}\``);
+      lines.push(`   • Səfər Tarixi: \`${profile.departureDate}\``);
+      lines.push(`   • Köməkçi Xidmət: *${profile.needsFranceVisasAssistance ? 'Bəli (+24 AZN)' : 'Xeyr'}*`);
     }
-    lines.push(`4️⃣ *Step 4 & 5:* Select *Tourism / Schengen* ➔ Skip optional extras.`);
-    lines.push(`5️⃣ *Step 6 (Calendar):* Click the open date ➔ select time ➔ check the security box ➔ click *Confirm Appointment*!`);
+    lines.push(`4️⃣ *Addım 4 və 5:* *Turizm / Şengen* seçin ➔ Əlavə xidmətləri keçin.`);
+    lines.push(`5️⃣ *Addım 6 (Təqvim):* Yaşıl tarixi seçin ➔ saatı seçin ➔ təhlükəsizlik qutusunu ("I am not a robot") işarələyin ➔ *Confirm Appointment* düyməsinə klikləyin!`);
     lines.push(``);
-    lines.push(`⏱️ *Detected:* ${new Date().toLocaleTimeString()}`);
+    lines.push(`⏱️ *Aşkar Edildi:* ${new Date().toLocaleTimeString('az-AZ')}`);
 
-    keyboard.url('🚀 Open Capago Booking Portal', env.CAPAGO_PORTAL_URL);
+    keyboard.url('🚀 Capago Portalına Keçid', env.CAPAGO_PORTAL_URL);
 
     await this.bot.api.sendMessage(chatId, lines.join('\n'), {
       parse_mode: 'Markdown',
@@ -1025,18 +1039,18 @@ export class TelegramBotService {
     // Register commands with Telegram so they appear in the '/' autocomplete menu
     try {
       await this.bot.api.setMyCommands([
-        { command: 'start',           description: '👋 Welcome & show main menu' },
-        { command: 'new_application', description: '📝 Setup your visa application profile' },
-        { command: 'check_now',       description: '🔍 Trigger an instant slot check now' },
-        { command: 'status',          description: '📊 Check current monitor status' },
-        { command: 'profile',         description: '👤 View your saved applicant profile' },
-        { command: 'set_months',      description: '📅 Change how many months ahead to scan (1-6)' },
-        { command: 'start_monitor',   description: '▶️ Resume automatic slot monitoring' },
-        { command: 'stop_monitor',    description: '⏸️ Pause automatic slot monitoring' },
-        { command: 'cancel',          description: '❌ Cancel any ongoing setup wizard' },
-        { command: 'delete_profile',  description: '🗑️ Permanently delete your saved data' },
-        { command: 'help',            description: '❓ Show help and usage guide' },
-        { command: 'logs',            description: '📋 View recent monitoring activity' },
+        { command: 'start',           description: '👋 Xoş gəlmisiniz & Əsas menyu' },
+        { command: 'new_application', description: '📝 Viza müraciət profilini yaratmaq' },
+        { command: 'check_now',       description: '🔍 İndi dərhal yerləri yoxlamaq' },
+        { command: 'status',          description: '📊 Monitorinqin cari vəziyyəti' },
+        { command: 'profile',         description: '👤 Yadda saxlanmış müraciət məlumatları' },
+        { command: 'set_months',      description: '📅 Baxılacaq ayların sayını seçmək (1-6)' },
+        { command: 'start_monitor',   description: '▶️ Avtomatik monitorinqi aktivləşdirmək' },
+        { command: 'stop_monitor',    description: '⏸️ Avtomatik monitorinqi dayandırmaq' },
+        { command: 'cancel',          description: '❌ Cari əməliyyatı ləğv etmək' },
+        { command: 'delete_profile',  description: '🗑️ Bütün məlumatları birdəfəlik silmək' },
+        { command: 'help',            description: '❓ Kömək və istifadə təlimatı' },
+        { command: 'logs',            description: '📋 Son monitorinq fəaliyyətlərini göstərmək' },
       ]);
       console.log(`[Bot] Commands registered with Telegram (/ autocomplete enabled).`);
     } catch (err) {

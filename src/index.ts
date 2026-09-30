@@ -100,7 +100,7 @@ class CapagoMonitor {
     const targetCenter = profile?.center || env.CAPAGO_CENTER;
     const who = profile ? `${profile.firstName} ${profile.lastName}` : 'default';
 
-    telegramBotService.logActivity(`🔄 Cycle started for *${who}* (${targetCenter} / ${targetCategory})`);
+    telegramBotService.logActivity(`🔄 Monitorinq başladı: *${who}* (${targetCenter} / ${targetCategory})`);
 
     const { browser, context, page } = await initStealthBrowser();
 
@@ -108,23 +108,23 @@ class CapagoMonitor {
       // 1. Session verification & authentication
       const authResult = await this.sessionManager.ensureAuthenticated(page, context);
       if (!authResult.authenticated) {
-        telegramBotService.logActivity(`❌ Authentication failed — check Capago credentials`);
+        telegramBotService.logActivity(`❌ Giriş xətası — Capago məlumatlarını yoxlayın`);
         return { report: null };
       }
-      telegramBotService.logActivity(`✅ Authenticated on Capago portal`);
+      telegramBotService.logActivity(`✅ Capago portalına giriş uğurludur`);
 
       // 2. Navigate 6-step form progression to Calendar
       const formStepper = new FormStepper(page, profile);
       const navResult = await formStepper.navigateToCalendar();
 
       if (!navResult.success) {
-        telegramBotService.logActivity(`⚠️ Could not reach Calendar — will retry next cycle`);
+        telegramBotService.logActivity(`⚠️ Təqvimə çatmaq mümkün olmadı — növbəti dövrdə təkrar cəhd ediləcək`);
         return { report: null };
       }
-      telegramBotService.logActivity(`📅 Calendar reached — scanning ${profile?.monthsToScan || env.MONTHS_TO_SCAN} month(s)`);
-
       // 3. Parse Calendar DOM for slots
       const monthsAhead = profile?.monthsToScan || env.MONTHS_TO_SCAN;
+      telegramBotService.logActivity(`📅 Təqvimə çatıldı — ${monthsAhead} ay üzrə axtarış aparılır`);
+
       const calendarParser = new CalendarParser(page);
       const report = await calendarParser.scanCalendar(monthsAhead);
 
@@ -133,17 +133,17 @@ class CapagoMonitor {
       let screenshotPath: string | undefined;
 
       if (report.hasAvailableSlots) {
-        telegramBotService.logActivity(`🚨 SLOTS FOUND! ${report.availableSlots.length} slot(s) on ${report.availableDays.length} day(s) — alerts dispatched!`);
+        telegramBotService.logActivity(`🚨 YERLƏR TAPILDI! ${report.availableDays.length} gün üzrə ${report.availableSlots.length} boş yer — bildiriş göndərildi!`);
         screenshotPath = await calendarParser.captureSlotFoundScreenshot();
         await telegramNotifier.sendAlert(report);
       } else {
-        telegramBotService.logActivity(`✅ Cycle done in ${elapsedSec}s — no slots found (${report.totalDaysScanned} days scanned)`);
+        telegramBotService.logActivity(`✅ Dövr tamamlandı (${elapsedSec} san) — boş yer tapılmadı (${report.totalDaysScanned} gün yoxlandı)`);
       }
 
       return { report, screenshotPath };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      telegramBotService.logActivity(`❌ Cycle error: ${msg.slice(0, 80)}`);
+      telegramBotService.logActivity(`❌ Dövr xətası: ${msg.slice(0, 80)}`);
       console.error(`[Monitor] Error during cycle:`, msg);
       return { report: null };
     } finally {

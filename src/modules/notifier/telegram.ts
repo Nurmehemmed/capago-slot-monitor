@@ -24,26 +24,26 @@ export class TelegramNotifier {
     const daysSummary = report.availableDays
       .map((day) => {
         const slotsList = day.slots.length > 0 
-          ? day.slots.map((s) => s.time || 'Available').join(', ') 
-          : 'Slots open (select to view times)';
+          ? day.slots.map((s) => s.time || 'Mövcud').join(', ') 
+          : 'Boş yerlər var (saatları görmək üçün seçin)';
         return `• 📅 *${day.date}*: \`${slotsList}\``;
       })
       .slice(0, 10) // Limit to top 10 days to keep message concise
       .join('\n');
 
     return [
-      `🚨 *CAPAGO VISA APPOINTMENT SLOTS AVAILABLE!* 🚨`,
+      `🚨 *CAPAGO VİZA ÜÇÜN BOŞ YERLƏR TAPILDI!* 🚨`,
       ``,
-      `📍 *Center:* ${report.center}`,
-      `🏷️ *Category:* ${report.category}`,
-      `📊 *Days with Slots:* ${report.availableDays.length}`,
-      `⏰ *Total Detected Slots:* ${report.availableSlots.length}`,
+      `📍 *Mərkəz:* ${report.center}`,
+      `🏷️ *Kateqoriya:* ${report.category}`,
+      `📊 *Yer Olan Günlərin Sayı:* ${report.availableDays.length}`,
+      `⏰ *Ümumi Tapılan Boş Saatlar:* ${report.availableSlots.length}`,
       ``,
-      `*Available Dates:*`,
-      daysSummary || '• Slots found on calendar view.',
+      `*Mövcud Tarixlər:*`,
+      daysSummary || '• Təqvimdə boş yerlər aşkar edildi.',
       ``,
-      `🔗 [Open Capago Portal](${env.CAPAGO_PORTAL_URL})`,
-      `⏱️ *Detected:* ${new Date().toLocaleString()}`,
+      `🔗 [Capago Portalına Keçid](${env.CAPAGO_PORTAL_URL})`,
+      `⏱️ *Aşkar Edildi:* ${new Date().toLocaleString('az-AZ')}`,
     ].join('\n');
   }
 
