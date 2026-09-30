@@ -177,6 +177,12 @@ class CapagoMonitor {
       await page.close().catch(() => {});
       await context.close().catch(() => {});
       await browser.close().catch(() => {});
+
+      if (typeof (global as any).gc === 'function') {
+        try {
+          (global as any).gc();
+        } catch {}
+      }
     }
   }
 

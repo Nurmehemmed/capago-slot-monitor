@@ -21,7 +21,7 @@ export class CalendarParser {
       fs.mkdirSync(screenshotDir, { recursive: true });
     }
     const filename = path.join(screenshotDir, `slot_found_${Date.now()}.png`);
-    await this.page.screenshot({ path: filename, fullPage: true }).catch(() => {});
+    await this.page.screenshot({ path: filename, fullPage: false }).catch(() => {});
     return filename;
   }
 
@@ -55,9 +55,9 @@ export class CalendarParser {
       }
     }
 
-    // Direct text search in page body
-    const bodyText = (await this.page.textContent('body').catch(() => '')) || '';
-    const match = bodyText.match(monthRegex);
+    // Direct text search in main container rather than entire page body
+    const mainText = (await this.page.locator('main, #root, #app, [class*="calendar"]').first().textContent().catch(() => '')) || '';
+    const match = mainText.match(monthRegex);
     if (match) {
       return match[0];
     }

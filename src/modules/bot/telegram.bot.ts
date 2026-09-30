@@ -29,6 +29,11 @@ export function getTitleDisplay(title?: string): string {
   return 'Cənab (Mr)';
 }
 
+export function escapeMarkdown(text?: string): string {
+  if (!text) return '';
+  return String(text).replace(/([_*`\[\]()])/g, '\\$1');
+}
+
 export class TelegramBotService {
   private bot: Bot | null = null;
   private isRunning = false;
@@ -70,6 +75,45 @@ export class TelegramBotService {
     }
     this.checkInProgress = false;
     return false;
+  }
+
+  /**
+   * Resilient reply helper: retries without parse_mode if Markdown entities fail.
+   */
+  public async safeReply(ctx: any, text: string, options: any = {}): Promise<any> {
+    try {
+      return await ctx.reply(text, options);
+    } catch (err: any) {
+      const errMsg = err?.message || String(err);
+      if (errMsg.includes("can't parse entities") || errMsg.includes('Bad Request')) {
+        console.warn(`[Bot] Markdown entity parse failed in safeReply, retrying without parse_mode.`);
+        const fallbackOptions = { ...options };
+        delete fallbackOptions.parse_mode;
+        const plain = text.replace(/[*_`]/g, '');
+        return await ctx.reply(plain, fallbackOptions);
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Resilient sendMessage helper: retries without parse_mode if Markdown entities fail.
+   */
+  public async safeSendMessage(chatId: number, text: string, options: any = {}): Promise<any> {
+    if (!this.bot) return;
+    try {
+      return await this.bot.api.sendMessage(chatId, text, options);
+    } catch (err: any) {
+      const errMsg = err?.message || String(err);
+      if (errMsg.includes("can't parse entities") || errMsg.includes('Bad Request')) {
+        console.warn(`[Bot] Markdown entity parse failed in safeSendMessage, retrying without parse_mode.`);
+        const fallbackOptions = { ...options };
+        delete fallbackOptions.parse_mode;
+        const plain = text.replace(/[*_`]/g, '');
+        return await this.bot.api.sendMessage(chatId, plain, fallbackOptions);
+      }
+      throw err;
+    }
   }
 
   constructor() {
@@ -118,7 +162,7 @@ export class TelegramBotService {
         `📅 /set\\_months - Baxılacaq ayların sayını seçmək (1-6)`,
         `📊 /status - Monitorinqin cari vəziyyəti`,
         `👤 /profile - Yadda saxlanmış müraciət məlumatları`,
-        `🛑 /stop\_all - Bütün aktiv prosesləri dərhal dayandırmaq`,
+        `🛑 /stop\\_all - Bütün aktiv prosesləri dərhal dayandırmaq`,
         `⚙️ /cancel - Prosesləri idarə etmək və ləğv paneli`,
         `🗑️ /delete\\_profile - Məlumatlarınızı botdan birdəfəlik silmək`,
         `⏸️ /stop\\_monitor - Avtomatik bildirişləri dayandırmaq`,
@@ -136,7 +180,7 @@ export class TelegramBotService {
         .text('👤 Profilim', 'cmd_profile')
         .text('⚙️ Prosesləri İdarə Et', 'cmd_cancel_menu');
 
-      await ctx.reply(welcomeText, { parse_mode: 'Markdown', reply_markup: keyboard });
+      await this.safeReply(ctx, welcomeText, { parse_mode: 'Markdown', reply_markup: keyboard });
     });
 
     // --- /help command ---
@@ -152,13 +196,14 @@ export class TelegramBotService {
         `6️⃣ *Dərhal Bildiriş*: Boş yer açılan kimi ekran şəkli və mövcud saatlarla dərhal bildiriş alacaqsınız.`,
         `7️⃣ *Fəaliyyət Qeydləri*: /logs komandası ilə son monitorinq fəaliyyətlərini buradan izləyə bilərsiniz.`,
       ].join('\n');
-      await ctx.reply(helpText, { parse_mode: 'Markdown' });
+      await this.safeReply(ctx, helpText, { parse_mode: 'Markdown' });
     });
 
     // --- /logs command ---
     this.bot.command('logs', async (ctx) => {
       if (this.activityLog.length === 0) {
-        await ctx.reply(
+        await this.safeReply(
+          ctx,
           `📋 *Hələ fəaliyyət qeydi yoxdur.*\n\nBot işə düşəndən bəri hələ yoxlama dövrü baş verməyib.\nDərhal yoxlamaq üçün /check\\_now komandasını göndərin.`,
           { parse_mode: 'Markdown' }
         );
@@ -168,12 +213,12 @@ export class TelegramBotService {
       const lines = [
         `📋 *Son Monitorinq Qeydləri (son ${this.activityLog.length} hadisə):*`,
         ``,
-        ...this.activityLog.map((e) => `\`${e.ts}\` ${e.msg}`),
+        ...this.activityLog.map((e) => `• \`${e.ts}\` ${escapeMarkdown(e.msg)}`),
         ``,
-        `_Dərhal yoxlamaq üçün /check\\_now komandasından istifadə edin._`,
+        `💡 Dərhal yoxlamaq üçün /check\\_now komandasından istifadə edin.`,
       ];
 
-      await ctx.reply(lines.join('\n'), { parse_mode: 'Markdown' });
+      await this.safeReply(ctx, lines.join('\n'), { parse_mode: 'Markdown' });
     });
 
     // --- /status command ---
@@ -788,7 +833,7 @@ export class TelegramBotService {
       `• *Portal:* ${env.CAPAGO_PORTAL_URL}`,
       ``,
       profile
-        ? `👤 *Qeydiyyatdan Keçən Şəxs:* ${getTitleDisplay(profile.title)} ${profile.firstName} ${profile.lastName} (\`${profile.passportNumber}\`)`
+        ? `👤 *Qeydiyyatdan Keçən Şəxs:* ${getTitleDisplay(profile.title)} ${escapeMarkdown(profile.firstName)} ${escapeMarkdown(profile.lastName)} (\`${escapeMarkdown(profile.passportNumber)}\`)`
         : `⚠️ *Xüsusi profil daxil edilməyib.* Standart tənzimləmələrdən istifadə olunur.`,
     ].join('\n');
 
@@ -798,7 +843,7 @@ export class TelegramBotService {
       .row()
       .text(session.monitoringActive ? '⏸️ Dayandır' : '▶️ Davam et', session.monitoringActive ? 'cmd_stop' : 'cmd_start');
 
-    await ctx.reply(statusText, { parse_mode: 'Markdown', reply_markup: keyboard });
+    await this.safeReply(ctx, statusText, { parse_mode: 'Markdown', reply_markup: keyboard });
   }
 
   private async replySetMonths(ctx: any): Promise<void> {
@@ -815,7 +860,8 @@ export class TelegramBotService {
       .text(current === 5 ? '✅ 5 Ay' : '5 Ay', 'months_5')
       .text(current === 6 ? '✅ 6 Ay' : '6 Ay (Maksimum Şengen)', 'months_6');
 
-    await ctx.reply(
+    await this.safeReply(
+      ctx,
       `📅 *Axtarış Müddətini Təyin Edin*\n\nBotun Capago təqvimində neçə ay irəli axtarış aparmasını istədiyinizi seçin:\n_(Hazırda: *${current} ay irəli*. Şengen qaydalarına əsasən, ən çox 6 ay irəliyə görüş götürmək olar)_`,
       { parse_mode: 'Markdown', reply_markup: keyboard }
     );
@@ -826,7 +872,7 @@ export class TelegramBotService {
     const p = session.savedProfile;
 
     if (!p) {
-      await ctx.reply(`⚠️ Profil quraşdırılmayıb. Məlumatları daxil etmək üçün /new\\_application işə salın.`, {
+      await this.safeReply(ctx, `⚠️ Profil quraşdırılmayıb. Məlumatları daxil etmək üçün /new\\_application işə salın.`, {
         parse_mode: 'Markdown',
       });
       return;
@@ -835,7 +881,7 @@ export class TelegramBotService {
     const fvText = p.needsFranceVisasAssistance
       ? '💼 Capago Köməkliyi (+24 AZN)'
       : p.franceVisasRef
-      ? `\`${p.franceVisasRef}\``
+      ? `\`${escapeMarkdown(p.franceVisasRef)}\``
       : '💼 Capago Köməkliyi (+24 AZN)';
 
     const monthsAhead = p.monthsToScan || env.MONTHS_TO_SCAN;
@@ -844,25 +890,25 @@ export class TelegramBotService {
       `👤 *Yadda Saxlanmış Müraciət Profili:*`,
       ``,
       `• *Müraciət Forması:* ${getTitleDisplay(p.title)}`,
-      `• *Ad və Soyad:* ${p.firstName} ${p.lastName}`,
-      `• *Pasport Nömrəsi:* \`${p.passportNumber}\``,
-      `• *Doğum Tarixi:* ${p.dob}`,
-      `• *Telefon:* ${p.phone}`,
-      `• *Səfər Tarixi:* ${p.departureDate}`,
+      `• *Ad və Soyad:* ${escapeMarkdown(p.firstName)} ${escapeMarkdown(p.lastName)}`,
+      `• *Pasport Nömrəsi:* \`${escapeMarkdown(p.passportNumber)}\``,
+      `• *Doğum Tarixi:* ${escapeMarkdown(p.dob)}`,
+      `• *Telefon:* ${escapeMarkdown(p.phone)}`,
+      `• *Səfər Tarixi:* ${escapeMarkdown(p.departureDate)}`,
       `• *France-Visas Forması:* ${fvText}`,
       `• *Mərkəz:* Bakı`,
       `• *Kateqoriya:* ${getCategoryDisplay(p.category)}`,
       `• *Viza Növü:* Standart Şengen (Aİ Qaydaları)`,
       `• *Axtarış Müddəti:* ${monthsAhead} ay irəli`,
       ``,
-      `_Məlumatları dəyişmək üçün /new\\_application və ya /set\\_months istifadə edə bilərsiniz._`,
+      `💡 Məlumatları dəyişmək üçün /new\\_application və ya /set\\_months istifadə edə bilərsiniz.`,
     ].join('\n');
 
     const keyboard = new InlineKeyboard()
       .text('📅 Müddəti Dəyiş', 'cmd_set_months')
       .text('📝 Profili Redaktə Et', 'cmd_new_app');
 
-    await ctx.reply(text, { parse_mode: 'Markdown', reply_markup: keyboard });
+    await this.safeReply(ctx, text, { parse_mode: 'Markdown', reply_markup: keyboard });
   }
 
   public async replyCancelPanel(ctx: any): Promise<void> {
@@ -889,7 +935,7 @@ export class TelegramBotService {
       `*Mövcud Vəziyyət:*`,
       `• *Cari Brauzer Yoxlaması:* ${isChecking ? '🔄 İCRA OLUNUR (Portala baxılır)' : '⚪ Aktiv deyil'}`,
       `• *Avtomatik Monitorinq:* ${isMonitoring ? '🟢 AKTİV' : '🔴 DAYANDIRILIB'}`,
-      `• *Yadda Saxlanmış Profil:* ${p ? `${p.firstName} ${p.lastName} (\`${p.passportNumber}\`)` : 'Yoxdur'}`,
+      `• *Yadda Saxlanmış Profil:* ${p ? `${escapeMarkdown(p.firstName)} ${escapeMarkdown(p.lastName)} (\`${escapeMarkdown(p.passportNumber)}\`)` : 'Yoxdur'}`,
       ``,
       `Dayandırmaq və ya silmək istədiyiniz prosesi seçin:`,
     ].join('\n');
@@ -915,7 +961,7 @@ export class TelegramBotService {
 
     keyboard.text('📊 Status', 'cmd_status').text('👤 Profilim', 'cmd_profile');
 
-    await ctx.reply(statusMsg, { parse_mode: 'Markdown', reply_markup: keyboard });
+    await this.safeReply(ctx, statusMsg, { parse_mode: 'Markdown', reply_markup: keyboard });
   }
 
   public async handleStopAll(ctx: any): Promise<void> {
@@ -937,8 +983,9 @@ export class TelegramBotService {
       .text('👤 Profilim', 'cmd_profile')
       .text('🗑️ Məlumatları Sil', 'cmd_delete_profile');
 
-    await ctx.reply(
-      `🛑 *Bütün aktiv proseslər dayandırıldı!*\n\n• Cari brauzer yoxlaması dayandırıldı.\n• Avtomatik arxa plan monitorinqi dayandırıldı.\n• Qaralama formlar ləğv edildi.\n\n_Qeyd: Profil məlumatlarınız saxlanıldı. İstədiyiniz vaxt ▶️ /start\\_monitor və ya /check\\_now ilə davam edə bilərsiniz._`,
+    await this.safeReply(
+      ctx,
+      `🛑 *Bütün aktiv proseslər dayandırıldı!*\n\n• Cari brauzer yoxlaması dayandırıldı.\n• Avtomatik arxa plan monitorinqi dayandırıldı.\n• Qaralama formlar ləğv edildi.\n\nℹ️ Qeyd: Profil məlumatlarınız saxlanıldı. İstədiyiniz vaxt ▶️ /start\\_monitor və ya /check\\_now ilə davam edə bilərsiniz.`,
       { parse_mode: 'Markdown', reply_markup: keyboard }
     );
   }
@@ -950,7 +997,7 @@ export class TelegramBotService {
     if (!this.bot) return;
 
     if (this.checkInProgress) {
-      await this.bot.api.sendMessage(
+      await this.safeSendMessage(
         chatId,
         `⏳ *Hal-hazırda yoxlama aparılır.* Zəhmət olmasa bitməsini gözləyin.`,
         { parse_mode: 'Markdown' }
@@ -959,7 +1006,7 @@ export class TelegramBotService {
     }
 
     if (!this.onTriggerCheck) {
-      await this.bot.api.sendMessage(
+      await this.safeSendMessage(
         chatId,
         `⚠️ Monitorinq modulu bota qoşulmayıb.`,
         { parse_mode: 'Markdown' }
@@ -973,7 +1020,7 @@ export class TelegramBotService {
 
     if (!profile) {
       this.checkInProgress = false;
-      await this.bot.api.sendMessage(
+      await this.safeSendMessage(
         chatId,
         `⚠️ *Müraciət Profili Tapılmadı!*\n\nViza müraciətinin ləğv edilməsinin və portal xətalarının qarşısını almaq üçün saxta və ya boş məlumatlarla yoxlama aparılmır.\n\nZəhmət olmasa yerləri yoxlamazdan əvvəl /new\\_application ilə real məlumatlarınızı daxil edin.`,
         { parse_mode: 'Markdown' }
@@ -986,9 +1033,9 @@ export class TelegramBotService {
       ? `🔍 *Capago portalında ilk yoxlama başladılır...*`
       : `🔍 *Capago portalında yoxlama başladılır...*`;
 
-    await this.bot.api.sendMessage(
+    await this.safeSendMessage(
       chatId,
-      `${headerMsg}\n*Bakı / ${getCategoryDisplay(profile.category)}* (${profile.firstName} ${profile.lastName}) üçün ${monthsAhead} ay irəli axtarılır.\n_Təhlükəsiz keçid üçün təxminən 60-90 saniyə çəkir._`,
+      `${headerMsg}\n*Bakı / ${getCategoryDisplay(profile.category)}* (${escapeMarkdown(profile.firstName)} ${escapeMarkdown(profile.lastName)}) üçün ${monthsAhead} ay irəli axtarılır.\n_Təhlükəsiz keçid üçün təxminən 60-90 saniyə çəkir._`,
       { parse_mode: 'Markdown' }
     );
 
@@ -1013,16 +1060,16 @@ export class TelegramBotService {
         const nextMsg = nextIntervalMinutes
           ? ` Növbəti qrafik üzrə (~${nextIntervalMinutes} dəqiqəyə) təkrar cəhd ediləcək.`
           : ` Növbəti qrafik üzrə təkrar cəhd ediləcək.`;
-        await this.bot.api.sendMessage(
+        await this.safeSendMessage(
           chatId,
           `⚠️ Yoxlama zamanı xəta baş verdi və ya səhifə açılmadı.${nextMsg}`,
           { parse_mode: 'Markdown' }
         );
       }
     } catch (err) {
-      await this.bot.api.sendMessage(
+      await this.safeSendMessage(
         chatId,
-        `❌ Yoxlama zamanı xəta baş verdi: ${err instanceof Error ? err.message : String(err)}`,
+        `❌ Yoxlama zamanı xəta baş verdi: ${escapeMarkdown(err instanceof Error ? err.message : String(err))}`,
         { parse_mode: 'Markdown' }
       );
     } finally {
@@ -1047,7 +1094,7 @@ export class TelegramBotService {
         ? `\n\n🟢 Avtomatik monitorinq aktivdir. Növbəti yoxlama *~${nextIntervalMinutes} dəqiqə* sonra planlaşdırılıb.`
         : `\n\n🟢 Avtomatik monitorinq aktivdir və yer açılan kimi dərhal bildiriş göndərəcək.`;
 
-      await this.bot.api.sendMessage(
+      await this.safeSendMessage(
         chatId,
         `📅 *Yoxlama Tamamlandı: Boş Yer Tapılmadı*\n\n*${report.center === 'Baku' ? 'Bakı' : report.center} - ${getCategoryDisplay(report.category)}* üzrə ${monthsAhead} ay ərzində cəmi ${report.totalDaysScanned} gün yoxlandı.${scheduleNotice}`,
         { parse_mode: 'Markdown' }
@@ -1103,11 +1150,11 @@ export class TelegramBotService {
     lines.push(`2️⃣ *Addım 1 və 2:* Razılıq qutularını işarələyin ➔ *Bakı* mərkəzini seçin.`);
     lines.push(`3️⃣ *Addım 3:* 1 Müraciətçi ➔ Məlumatları köçürmək üçün aşağıdakı sətirlərə toxunaraq kopyalayın:`);
     if (profile) {
-      lines.push(`   • Ad və Soyad: \`${profile.firstName} ${profile.lastName}\``);
-      lines.push(`   • Pasport: \`${profile.passportNumber}\``);
-      lines.push(`   • Doğum Tarixi: \`${profile.dob}\``);
-      lines.push(`   • Telefon: \`${profile.phone}\``);
-      lines.push(`   • Səfər Tarixi: \`${profile.departureDate}\``);
+      lines.push(`   • Ad və Soyad: \`${escapeMarkdown(profile.firstName)} ${escapeMarkdown(profile.lastName)}\``);
+      lines.push(`   • Pasport: \`${escapeMarkdown(profile.passportNumber)}\``);
+      lines.push(`   • Doğum Tarixi: \`${escapeMarkdown(profile.dob)}\``);
+      lines.push(`   • Telefon: \`${escapeMarkdown(profile.phone)}\``);
+      lines.push(`   • Səfər Tarixi: \`${escapeMarkdown(profile.departureDate)}\``);
       lines.push(`   • Köməkçi Xidmət: *${profile.needsFranceVisasAssistance ? 'Bəli (+24 AZN)' : 'Xeyr'}*`);
     }
     lines.push(`4️⃣ *Addım 4 və 5:* *Turizm / Şengen* seçin ➔ Əlavə xidmətləri keçin.`);
@@ -1117,7 +1164,7 @@ export class TelegramBotService {
 
     keyboard.url('🚀 Capago Portalına Keçid', env.CAPAGO_PORTAL_URL);
 
-    await this.bot.api.sendMessage(chatId, lines.join('\n'), {
+    await this.safeSendMessage(chatId, lines.join('\n'), {
       parse_mode: 'Markdown',
       reply_markup: keyboard,
     });

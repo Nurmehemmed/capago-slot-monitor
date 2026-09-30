@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "NODE_TLS_REJECT_UNAUTHORIZED=0 tsx src/index.ts",
     "build": "tsc",
-    "start": "NODE_TLS_REJECT_UNAUTHORIZED=0 node dist/index.js",
+    "start": "NODE_TLS_REJECT_UNAUTHORIZED=0 node --expose-gc --max-old-space-size=288 dist/index.js",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [

@@ -79,6 +79,12 @@ export async function initStealthBrowser(): Promise<BrowserSession> {
       '--disable-infobars',
       '--no-sandbox',
       '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--disable-software-rasterizer',
+      '--no-zygote',
+      '--renderer-process-limit=1',
+      '--js-flags=--max-old-space-size=128',
       '--window-position=0,0',
     ],
   });

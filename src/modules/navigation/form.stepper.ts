@@ -90,16 +90,16 @@ export class FormStepper {
       return 'APPLICANT_DETAILS';
     }
 
-    const bodyText = (await this.page.textContent('body').catch(() => '')) || '';
+    const mainText = (await this.page.locator('main, #root, #app, form').first().textContent().catch(() => '')) || '';
 
     // 5. Step 4b: Travel Project Review Summary
-    if (bodyText.includes('Visa Type :')) {
+    if (mainText.includes('Visa Type :') || (await this.page.locator('text="Visa Type :"').count()) > 0) {
       return 'TRAVEL_PROJECT_REVIEW';
     }
 
     // 6. Step 4a: Travel Project Selection Form (Duration of stay)
     if (
-      bodyText.includes('Duration of stay') ||
+      mainText.includes('Duration of stay') ||
       (await this.page.locator('text="Duration of stay", text="Short stay"').count()) > 0
     ) {
       return 'TRAVEL_PROJECT';
@@ -107,31 +107,31 @@ export class FormStepper {
 
     // 7. Step 2: Submission Location
     if (
-      bodyText.includes('Capago Center - Baku') ||
-      bodyText.includes('Centre Capago - Baku') ||
+      mainText.includes('Capago Center - Baku') ||
+      mainText.includes('Centre Capago - Baku') ||
       (await this.page.locator('text="Selected center", text="Centre Capago"').count()) > 0
     ) {
       return 'SUBMISSION_LOCATION';
     }
 
     // 8. Step 5: Additional Services sub-screens
-    if (bodyText.includes('Schengen Travel Insurance')) {
+    if (mainText.includes('Schengen Travel Insurance') || (await this.page.locator('text="Schengen Travel Insurance"').count()) > 0) {
       return 'SERVICE_INSURANCE';
     }
     if (
-      bodyText.includes('Choose the All-Inclusive Service') ||
-      bodyText.includes('Prepare your visa application with full peace of mind') ||
+      mainText.includes('Choose the All-Inclusive Service') ||
+      mainText.includes('Prepare your visa application with full peace of mind') ||
       (await this.page.locator('button:has-text("Continue without this service")').count()) > 0
     ) {
       return 'SERVICE_ALL_INCLUSIVE';
     }
-    if (bodyText.includes('Discover Capago services to facilitate your application')) {
+    if (mainText.includes('Discover Capago services to facilitate your application')) {
       return 'SERVICE_OVERVIEW';
     }
     if (
-      bodyText.includes('Additional services') ||
-      bodyText.includes('Additional Services Cart') ||
-      bodyText.includes('Service ')
+      mainText.includes('Additional services') ||
+      mainText.includes('Additional Services Cart') ||
+      mainText.includes('Service ')
     ) {
       return 'SERVICE_OPTIONS';
     }
@@ -684,8 +684,7 @@ export class FormStepper {
       }
     }
 
-    const bodyText = (await this.page.textContent('body').catch(() => '')) || '';
-    return bodyText.includes('Select a date') || bodyText.includes('Available time slots');
+    return await this.page.locator('text="Select a date", text="Available time slots"').first().isVisible({ timeout: 1000 }).catch(() => false);
   }
 
   /**
