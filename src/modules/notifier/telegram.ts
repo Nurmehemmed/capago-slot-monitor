@@ -34,8 +34,8 @@ export class TelegramNotifier {
     return [
       `🚨 *CAPAGO VİZA ÜÇÜN BOŞ YERLƏR TAPILDI!* 🚨`,
       ``,
-      `📍 *Mərkəz:* ${report.center}`,
-      `🏷️ *Kateqoriya:* ${report.category}`,
+      `📍 *Mərkəz:* ${report.center === 'Baku' ? 'Bakı' : report.center}`,
+      `🏷️ *Kateqoriya:* ${report.category === 'Tourism' ? 'Turizm / Şəxsi Səfər' : report.category === 'Business' ? 'Biznes' : report.category === 'Study' ? 'Təhsil' : report.category}`,
       `📊 *Yer Olan Günlərin Sayı:* ${report.availableDays.length}`,
       `⏰ *Ümumi Tapılan Boş Saatlar:* ${report.availableSlots.length}`,
       ``,

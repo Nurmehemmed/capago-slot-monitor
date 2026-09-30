@@ -570,7 +570,7 @@ export class TelegramBotService {
           `1️⃣ Aşağıdakı düyməyə klikləyərək portalı açın.`,
           `2️⃣ Seçdiyiniz saatı təsdiqləyin (*${time || 'Slot'}*).`,
           `3️⃣ Təhlükəsizlik yoxlama qutusunu ("I am not a robot") işarələyin.`,
-          `4️⃣ *Confirm Appointment* düyməsinə klikləyin.`,
+          `4️⃣ *Confirm Appointment* (Görüşü Təsdiqlə) düyməsinə klikləyin.`,
           ``,
           `🔗 [Capago Portalına Keçid](${env.CAPAGO_PORTAL_URL})`,
         ].join('\n');
@@ -929,7 +929,7 @@ export class TelegramBotService {
 
       await this.bot.api.sendMessage(
         chatId,
-        `📅 *Yoxlama Tamamlandı: Boş Yer Tapılmadı*\n\n*${report.center} - ${getCategoryDisplay(report.category)}* üzrə ${monthsAhead} ay ərzində cəmi ${report.totalDaysScanned} gün yoxlandı.${scheduleNotice}`,
+        `📅 *Yoxlama Tamamlandı: Boş Yer Tapılmadı*\n\n*${report.center === 'Baku' ? 'Bakı' : report.center} - ${getCategoryDisplay(report.category)}* üzrə ${monthsAhead} ay ərzində cəmi ${report.totalDaysScanned} gün yoxlandı.${scheduleNotice}`,
         { parse_mode: 'Markdown' }
       );
       return;
@@ -951,7 +951,7 @@ export class TelegramBotService {
     const lines: string[] = [
       `🚨 *CAPAGO VİZA ÜÇÜN BOŞ YERLƏR TAPILDI!* 🚨`,
       ``,
-      `📍 *Mərkəz:* ${report.center}`,
+      `📍 *Mərkəz:* ${report.center === 'Baku' ? 'Bakı' : report.center}`,
       `🏷️ *Kateqoriya:* ${getCategoryDisplay(report.category)}`,
       `📅 *Yer Olan Günlərin Sayı:* ${report.availableDays.length}`,
       `⏰ *Ümumi Tapılan Boş Saatlar:* ${report.availableSlots.length}`,
@@ -991,7 +991,7 @@ export class TelegramBotService {
       lines.push(`   • Köməkçi Xidmət: *${profile.needsFranceVisasAssistance ? 'Bəli (+24 AZN)' : 'Xeyr'}*`);
     }
     lines.push(`4️⃣ *Addım 4 və 5:* *Turizm / Şengen* seçin ➔ Əlavə xidmətləri keçin.`);
-    lines.push(`5️⃣ *Addım 6 (Təqvim):* Yaşıl tarixi seçin ➔ saatı seçin ➔ təhlükəsizlik qutusunu ("I am not a robot") işarələyin ➔ *Confirm Appointment* düyməsinə klikləyin!`);
+    lines.push(`5️⃣ *Addım 6 (Təqvim):* Yaşıl tarixi seçin ➔ saatı seçin ➔ təhlükəsizlik qutusunu ("I am not a robot") işarələyin ➔ *Confirm Appointment* (Görüşü Təsdiqlə) düyməsinə klikləyin!`);
     lines.push(``);
     lines.push(`⏱️ *Aşkar Edildi:* ${new Date().toLocaleTimeString('az-AZ')}`);
 
