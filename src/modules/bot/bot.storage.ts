@@ -9,13 +9,11 @@ import { UserBotSession, ApplicantProfile } from '../../types/index.js';
 export class BotStorage {
   private sql: ReturnType<typeof postgres> | null = null;
   private cache: Record<string, UserBotSession> = {};
-  private ready = false;
 
   constructor() {
     const dbUrl = process.env.DATABASE_URL;
     if (!dbUrl) {
       console.warn('[BotStorage] DATABASE_URL not set — using in-memory storage (profiles lost on restart).');
-      this.ready = true;
       return;
     }
 
@@ -26,22 +24,18 @@ export class BotStorage {
         idle_timeout: 20,
         connect_timeout: 10,
       });
-      this.init().then(() => {
-        console.log('[BotStorage] Connected to Neon Postgres — sessions will persist across restarts.');
-        this.ready = true;
-      }).catch((err) => {
+      this.init().catch((err) => {
         console.error('[BotStorage] DB init failed, falling back to in-memory:', err);
         this.sql = null;
-        this.ready = true;
       });
     } catch (err) {
       console.error('[BotStorage] Failed to create DB client:', err);
-      this.ready = true;
     }
   }
 
   private async init(): Promise<void> {
     if (!this.sql) return;
+
     await this.sql`
       CREATE TABLE IF NOT EXISTS capago_sessions (
         chat_id BIGINT PRIMARY KEY,
@@ -49,12 +43,22 @@ export class BotStorage {
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
     `;
-    // Warm the in-memory cache from DB
+
+    // Load all sessions from DB into the in-memory cache
     const rows = await this.sql`SELECT chat_id, session_data FROM capago_sessions`;
     for (const row of rows) {
-      this.cache[String(row.chat_id)] = row.session_data as UserBotSession;
+      // IMPORTANT: postgres JSONB comes back as a parsed object, but if it was
+      // accidentally stored as a JSON-string-in-JSONB, we must parse it here.
+      let data = row.session_data;
+      if (typeof data === 'string') {
+        try { data = JSON.parse(data); } catch { /* leave as-is */ }
+      }
+      if (data && typeof data === 'object') {
+        this.cache[String(row.chat_id)] = data as UserBotSession;
+      }
     }
     console.log(`[BotStorage] Loaded ${rows.length} session(s) from database.`);
+    console.log('[BotStorage] Connected to Neon Postgres — sessions will persist across restarts.');
   }
 
   private async persist(chatId: number): Promise<void> {
@@ -62,9 +66,11 @@ export class BotStorage {
     const session = this.cache[String(chatId)];
     if (!session) return;
     try {
+      // Pass the plain object — postgres lib serializes it correctly for JSONB
+      // DO NOT JSON.stringify() here — that causes double-encoding
       await this.sql`
         INSERT INTO capago_sessions (chat_id, session_data, updated_at)
-        VALUES (${chatId}, ${JSON.stringify(session) as any}, NOW())
+        VALUES (${chatId}, ${session as any}, NOW())
         ON CONFLICT (chat_id)
         DO UPDATE SET session_data = EXCLUDED.session_data, updated_at = NOW()
       `;
@@ -81,7 +87,6 @@ export class BotStorage {
         monitoringActive: true,
         savedProfile: undefined,
       };
-      // Fire-and-forget persist
       this.persist(chatId).catch(() => {});
     }
     return this.cache[key];
@@ -91,7 +96,6 @@ export class BotStorage {
     const session = this.getSession(chatId);
     Object.assign(session, data);
     this.cache[String(chatId)] = session;
-    // Fire-and-forget persist
     this.persist(chatId).catch(() => {});
     return session;
   }

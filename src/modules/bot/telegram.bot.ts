@@ -24,6 +24,10 @@ export class TelegramBotService {
     if (this.isConfigured()) {
       this.bot = new Bot(env.TELEGRAM_BOT_TOKEN as string);
       this.setupHandlers();
+      // Global error handler — prevents any single message error from crashing the bot
+      this.bot.catch((err) => {
+        console.error(`[Bot] Middleware error (recovered):`, err.message || err);
+      });
     }
   }
 
