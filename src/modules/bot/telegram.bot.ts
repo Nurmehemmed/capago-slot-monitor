@@ -918,15 +918,29 @@ export class TelegramBotService {
     if (this.isRunning) return;
     this.isRunning = true;
 
-    console.log(`[Bot] Starting Telegram bot listener (polling)...`);
-    this.bot.start({
-      onStart: (info) => {
-        console.log(`[Bot] Telegram bot @${info.username} is ONLINE and ready!`);
-      },
-    }).catch((err) => {
-      console.error(`[Bot] Telegram bot error:`, err);
-      this.isRunning = false;
-    });
+    const startWithRetry = async () => {
+      console.log(`[Bot] Starting Telegram bot listener (polling)...`);
+      try {
+        await this.bot!.start({
+          onStart: (info) => {
+            console.log(`[Bot] Telegram bot @${info.username} is ONLINE and ready!`);
+          },
+        });
+      } catch (err: any) {
+        this.isRunning = false;
+        // 409 = another instance is polling (e.g. stray local process)
+        // Wait 20s and retry — the other instance will time out
+        if (err?.error_code === 409 || String(err?.message).includes('409')) {
+          console.warn(`[Bot] 409 Conflict — another bot instance is running. Waiting 20s then retrying...`);
+          await new Promise((r) => setTimeout(r, 20000));
+          this.isRunning = true;
+          return startWithRetry();
+        }
+        console.error(`[Bot] Telegram bot error (unrecoverable):`, err);
+      }
+    };
+
+    startWithRetry().catch((err) => console.error(`[Bot] Fatal bot error:`, err));
   }
 
   public stop(): void {
