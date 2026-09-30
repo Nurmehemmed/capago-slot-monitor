@@ -918,6 +918,26 @@ export class TelegramBotService {
     if (this.isRunning) return;
     this.isRunning = true;
 
+    // Register commands with Telegram so they appear in the '/' autocomplete menu
+    try {
+      await this.bot.api.setMyCommands([
+        { command: 'start',           description: '👋 Welcome & show main menu' },
+        { command: 'new_application', description: '📝 Setup your visa application profile' },
+        { command: 'check_now',       description: '🔍 Trigger an instant slot check now' },
+        { command: 'status',          description: '📊 Check current monitor status' },
+        { command: 'profile',         description: '👤 View your saved applicant profile' },
+        { command: 'set_months',      description: '📅 Change how many months ahead to scan (1-6)' },
+        { command: 'start_monitor',   description: '▶️ Resume automatic slot monitoring' },
+        { command: 'stop_monitor',    description: '⏸️ Pause automatic slot monitoring' },
+        { command: 'cancel',          description: '❌ Cancel any ongoing setup wizard' },
+        { command: 'delete_profile',  description: '🗑️ Permanently delete your saved data' },
+        { command: 'help',            description: '❓ Show help and usage guide' },
+      ]);
+      console.log(`[Bot] Commands registered with Telegram (/ autocomplete enabled).`);
+    } catch (err) {
+      console.warn(`[Bot] Could not register commands:`, err);
+    }
+
     const startWithRetry = async () => {
       console.log(`[Bot] Starting Telegram bot listener (polling)...`);
       try {
