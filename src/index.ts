@@ -278,6 +278,18 @@ class CapagoMonitor {
       console.log(`[Server] Health-check endpoint listening on port ${port}`);
     });
 
+    // Automatically prevent Render Free Tier spin-down (inactivity sleep after 15 mins)
+    const keepAliveUrl = process.env.RENDER_EXTERNAL_URL || process.env.KEEP_ALIVE_URL;
+    if (keepAliveUrl) {
+      console.log(`[KeepAlive] Automatic self-ping enabled for: ${keepAliveUrl} (every 9 mins to keep Render alive)`);
+      const pingTarget = keepAliveUrl.endsWith('/') ? `${keepAliveUrl}health` : `${keepAliveUrl}/health`;
+      setInterval(() => {
+        fetch(pingTarget)
+          .then((res) => console.log(`[KeepAlive] Self-ping status: ${res.status}`))
+          .catch((err) => console.warn(`[KeepAlive] Self-ping notice:`, (err as any)?.message || err));
+      }, 9 * 60 * 1000);
+    }
+
     console.log(`======================================================`);
     console.log(`  CAPAGO VISA SLOT MONITOR (STEALTH AUTOMATION)       `);
     console.log(`======================================================`);

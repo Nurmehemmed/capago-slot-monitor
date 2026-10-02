@@ -86,6 +86,17 @@ export async function initStealthBrowser(): Promise<BrowserSession> {
       '--renderer-process-limit=1',
       '--js-flags=--max-old-space-size=128',
       '--window-position=0,0',
+      '--disable-background-networking',
+      '--disable-background-timer-throttling',
+      '--disable-backgrounding-occluded-windows',
+      '--disable-breakpad',
+      '--disable-component-extensions-with-background-pages',
+      '--disable-extensions',
+      '--disable-features=Translate,BackForwardCache,AcceptCHFrame,MediaRouter,OptimizationHints',
+      '--disable-ipc-flooding-protection',
+      '--mute-audio',
+      '--no-default-browser-check',
+      '--no-first-run',
     ],
   });
 
@@ -113,6 +124,29 @@ export async function initStealthBrowser(): Promise<BrowserSession> {
   }
 
   const context = await browser.newContext(contextOptions);
+
+  // Block heavy assets (images, media, fonts, analytics) to strictly cap Chromium memory under 150MB
+  await context.route('**/*', (route) => {
+    const req = route.request();
+    const type = req.resourceType();
+    const url = req.url().toLowerCase();
+
+    if (
+      type === 'image' ||
+      type === 'media' ||
+      type === 'font' ||
+      url.includes('google-analytics') ||
+      url.includes('googletagmanager') ||
+      url.includes('doubleclick') ||
+      url.includes('hotjar') ||
+      url.includes('facebook') ||
+      url.includes('sentry')
+    ) {
+      return route.abort();
+    }
+    return route.continue();
+  });
+
   const page = await context.newPage();
 
   // Override webdriver property explicitly

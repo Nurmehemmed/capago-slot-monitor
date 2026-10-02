@@ -105,10 +105,22 @@ fly volumes create capago_storage --size 1 --region fra
 fly deploy
 
 # 5. View live logs from your phone
-fly logs
 ```
 
 ---
+
+### Option D: Render.com (Docker Web Service)
+
+1. Connect your GitHub repository to Render as a **Web Service** using the Docker runtime.
+2. In the Render Environment tab, configure:
+   * `TELEGRAM_BOT_TOKEN`: Your bot token from @BotFather.
+   * `DATABASE_URL`: Your Neon Postgres connection string (required to save sessions across restarts).
+   * `HEADLESS`: `true`
+   * `PORT`: `8080`
+3. **Prevent Inactivity Sleep (Spin-Down):**
+   * The app includes an automatic internal self-ping on Render (`RENDER_EXTERNAL_URL`).
+   * For 100% guarantee, create a free monitor at [UptimeRobot.com](https://uptimerobot.com) targeting `https://<your-service>.onrender.com/` with a 5-minute interval. This keeps the health-check port alive 24/7.
+
 
 ## 4. Telegram Bot User Guide
 
